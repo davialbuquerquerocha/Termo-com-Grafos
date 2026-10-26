@@ -7,8 +7,8 @@ from functools import lru_cache
 
 import numpy as np
 
-from termo import InvalidWordError, evaluate_guess
-from termo import score_guess
+from algorithm.termo_implementation import InvalidWordError, evaluate_guess
+from algorithm.termo_implementation import score_guess
 
 
 @dataclass(frozen=True)

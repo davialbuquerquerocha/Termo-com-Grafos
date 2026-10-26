@@ -14,6 +14,27 @@ def file_to_list(file_name: str) -> list[str]:
                 words_list.append(word)
     return words_list
 
+def reading_words_list(words_list: list[str], word_per_line: int):
+    """
+    Prints the words in the words_list line by line
+    """
+    if word_per_line <= 0:
+        raise ValueError("word_per_line must be greater than zero.")
+
+    for start in range(0, len(words_list), word_per_line):
+        words = [word.strip().upper() for word in words_list[start:start + word_per_line]]
+        print(", ".join(words))
+
+def count_words(words_list: list[str]) -> int:
+    """
+    You really need this?
+    """
+    count = 0
+    for word in words_list:
+        count += 1
+    return count
+
+
 def filter_list(words_list: list[str], letter_pos: tuple[str, int]) -> list[str]:
     """
     Filters the words_list to keep only words that have the specified letter at the given position.
@@ -91,8 +112,9 @@ def find_best_word_by_letter_position(words_list: list[str]) -> str:
 
 
 def find_best_word_by_letter_frequency(words_list: list[str]) -> str:
-    """"
-    Finds the best word based on letter frequency in the given list of words.
+    """
+    Finds the best word based on letter frequency, allowing repeated letters
+    only when no five-letter word with distinct letters is available.
     """
     if not words_list:
         raise ValueError("Cannot find a best word in an empty word list.")
@@ -108,18 +130,20 @@ def find_best_word_by_letter_frequency(words_list: list[str]) -> str:
         if len(word) == 5 and len(set(word.upper())) == 5
     ]
     if not candidates:
-        raise ValueError("No five-letter words with distinct letters found.")
+        candidates = [word.upper() for word in words_list if len(word) == 5]
+    if not candidates:
+        raise ValueError("No five-letter words found.")
 
     return max(
         candidates,
         key=lambda word: sum(letter_counts[letter] for letter in word),
     )
 
-def black_letter(words_list: list[str], letter_list: list[str]) -> list[str]:
+def black_letter(words_list: list[str], letter_pos_list: list[tuple[str, int]]) -> list[str]:
     """
     Filters the words_list to exclude words that contain any of the specified letters
     """
-    normalized_letters = [letter.upper() for letter in letter_list]
+    normalized_letters = [letter[0].upper() for letter in letter_pos_list]
     filtered_words = []
     for word in words_list:
         if not any(letter in normalized_letters for letter in word.upper()):
@@ -137,13 +161,19 @@ def yellow_letter(words_list: list[str], letter_pos_list: list[tuple[str, int]])
             filtered_words.append(word)
     return filtered_words
 
-def green_letter(words_list: list[str], letter_pos: tuple[str, int]) -> list[str]:
+def green_letter(words_list: list[str], letter_pos_list: list[tuple[str, int]]) -> list[str]:
     """
-    Filters the words_list to remove words that do not have the specified letter at the given position
+    Filters the words_list to keep only words that have all specified letters
+    at their given positions.
     """
-    letter, position = letter_pos
+    normalized_letter_positions = [(letter.upper(), position) for letter, position in letter_pos_list]
     filtered_words = []
     for word in words_list:
-        if 1 <= position <= len(word) and word[position - 1].upper() == letter.upper():
+        matches_all_positions = True
+        for letter, position in normalized_letter_positions:
+            if not (1 <= position <= len(word) and word[position - 1].upper() == letter):
+                matches_all_positions = False
+                break
+        if matches_all_positions:
             filtered_words.append(word)
     return filtered_words
