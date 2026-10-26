@@ -19,13 +19,13 @@ CLI usage:
     python program.py <wordlist_file> <answer> "<guess>"
 
 Examples:
-    $ python program.py textfile1.txt AIDED "FIRST"
+    $ python program.py textfile1.txt AIDED FIRST
     ([('F', 1), ('R', 3), ('S', 4), ('T', 5)], [], [('I', 2)])
 
-    $ python program.py textfile1.txt AIDED "ASDFW"
+    $ python program.py textfile1.txt AIDED ASDFW
     InvalidWordError: invalid guess 'ASDFW': word is not in the word list
 
-    $ python program.py textfile1.txt AIDED "AID"
+    $ python program.py textfile1.txt AIDED AID
     InvalidWordError: invalid guess 'AID': expected 5 letters, got 3
 
 Library usage:
