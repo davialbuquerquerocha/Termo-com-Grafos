@@ -1,3 +1,7 @@
+"""
+algo1.py real human-made implementation
+"""
+
 def file_to_list(file_name: str) -> list[str]:
     words_list = []
     with open(file_name, 'r', encoding='utf-8') as file:

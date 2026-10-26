@@ -1,3 +1,7 @@
+"""
+This script was only half human-made. We don't know exactly what AI did here, so we should NOT use this.
+"""
+
 from dataclasses import dataclass
 from functools import lru_cache
 
