@@ -1,115 +1,116 @@
-a : 92 on the 1ª position
-a : 285 on the 2ª position
-a : 81 on the 3ª position
-a : 230 on the 4ª position
-a : 366 on the 5ª position
-o : 23 on the 1ª position
-o : 241 on the 2ª position
-o : 39 on the 3ª position
-o : 127 on the 4ª position
-o : 416 on the 5ª position
-r : 74 on the 1ª position
-r : 131 on the 2ª position
-r : 200 on the 3ª position
-r : 93 on the 4ª position
-r : 214 on the 5ª position
-e : 18 on the 1ª position
-e : 218 on the 2ª position
-e : 74 on the 3ª position
-e : 87 on the 4ª position
-e : 123 on the 5ª position
-s : 96 on the 1ª position
-s : 15 on the 2ª position
-s : 115 on the 3ª position
-s : 64 on the 4ª position
-s : 184 on the 5ª position
-i : 15 on the 1ª position
-i : 146 on the 2ª position
-i : 109 on the 3ª position
-i : 122 on the 4ª position
-i : 8 on the 5ª position
-t : 111 on the 1ª position
-t : 17 on the 2ª position
-t : 87 on the 3ª position
-t : 147 on the 4ª position
-t : 0 on the 5ª position
-l : 88 on the 1ª position
-l : 38 on the 2ª position
-l : 106 on the 3ª position
-l : 30 on the 4ª position
-l : 61 on the 5ª position
-c : 154 on the 1ª position
-c : 11 on the 2ª position
-c : 56 on the 3ª position
-c : 65 on the 4ª position
-c : 0 on the 5ª position
-n : 39 on the 1ª position
-n : 29 on the 2ª position
-n : 147 on the 3ª position
-n : 42 on the 4ª position
-n : 4 on the 5ª position
-u : 11 on the 1ª position
-u : 145 on the 2ª position
-u : 62 on the 3ª position
-u : 34 on the 4ª position
-u : 7 on the 5ª position
-m : 102 on the 1ª position
-m : 17 on the 2ª position
-m : 53 on the 3ª position
-m : 44 on the 4ª position
-m : 27 on the 5ª position
-p : 141 on the 1ª position
-p : 10 on the 2ª position
-p : 29 on the 3ª position
-p : 34 on the 4ª position
-p : 0 on the 5ª position
-d : 53 on the 1ª position
-d : 12 on the 2ª position
-d : 53 on the 3ª position
-d : 81 on the 4ª position
-d : 0 on the 5ª position
-b : 88 on the 1ª position
-b : 10 on the 2ª position
-b : 42 on the 3ª position
-b : 25 on the 4ª position
-b : 0 on the 5ª position
-v : 70 on the 1ª position
-v : 7 on the 2ª position
-v : 39 on the 3ª position
-v : 33 on the 4ª position
-v : 0 on the 5ª position
-g : 57 on the 1ª position
-g : 5 on the 2ª position
-g : 47 on the 3ª position
-g : 35 on the 4ª position
-g : 0 on the 5ª position
-f : 107 on the 1ª position
-f : 3 on the 2ª position
-f : 13 on the 3ª position
-f : 6 on the 4ª position
-f : 0 on the 5ª position
-h : 16 on the 1ª position
-h : 12 on the 2ª position
-h : 5 on the 3ª position
-h : 40 on the 4ª position
-h : 0 on the 5ª position
-z : 7 on the 1ª position
-z : 1 on the 2ª position
-z : 19 on the 3ª position
-z : 7 on the 4ª position
-z : 16 on the 5ª position
-j : 21 on the 1ª position
-j : 1 on the 2ª position
-j : 8 on the 3ª position
-j : 9 on the 4ª position
-j : 0 on the 5ª position
-x : 1 on the 1ª position
-x : 9 on the 2ª position
-x : 12 on the 3ª position
-x : 11 on the 4ª position
-x : 1 on the 5ª position
-q : 8 on the 1ª position
-q : 0 on the 2ª position
-q : 9 on the 3ª position
-q : 0 on the 4ª position
-q : 0 on the 5ª position
+letra : quantidade : posição
+a : 92 : 1ª
+a : 285 : 2ª
+a : 81 : 3ª
+a : 230 : 4ª
+a : 366 : 5ª
+o : 23 : 1ª
+o : 241 : 2ª
+o : 39 : 3ª
+o : 127 : 4ª
+o : 416 : 5ª
+r : 74 : 1ª
+r : 131 : 2ª
+r : 200 : 3ª
+r : 93 : 4ª
+r : 214 : 5ª
+e : 18 : 1ª
+e : 218 : 2ª
+e : 74 : 3ª
+e : 87 : 4ª
+e : 123 : 5ª
+s : 96 : 1ª
+s : 15 : 2ª
+s : 115 : 3ª
+s : 64 : 4ª
+s : 184 : 5ª
+i : 15 : 1ª
+i : 146 : 2ª
+i : 109 : 3ª
+i : 122 : 4ª
+i : 8 : 5ª
+t : 111 : 1ª
+t : 17 : 2ª
+t : 87 : 3ª
+t : 147 : 4ª
+t : 0 : 5ª
+l : 88 : 1ª
+l : 38 : 2ª
+l : 106 : 3ª
+l : 30 : 4ª
+l : 61 : 5ª
+c : 154 : 1ª
+c : 11 : 2ª
+c : 56 : 3ª
+c : 65 : 4ª
+c : 0 : 5ª
+n : 39 : 1ª
+n : 29 : 2ª
+n : 147 : 3ª
+n : 42 : 4ª
+n : 4 : 5ª
+u : 11 : 1ª
+u : 145 : 2ª
+u : 62 : 3ª
+u : 34 : 4ª
+u : 7 : 5ª
+m : 102 : 1ª
+m : 17 : 2ª
+m : 53 : 3ª
+m : 44 : 4ª
+m : 27 : 5ª
+p : 141 : 1ª
+p : 10 : 2ª
+p : 29 : 3ª
+p : 34 : 4ª
+p : 0 : 5ª
+d : 53 : 1ª
+d : 12 : 2ª
+d : 53 : 3ª
+d : 81 : 4ª
+d : 0 : 5ª
+b : 88 : 1ª
+b : 10 : 2ª
+b : 42 : 3ª
+b : 25 : 4ª
+b : 0 : 5ª
+v : 70 : 1ª
+v : 7 : 2ª
+v : 39 : 3ª
+v : 33 : 4ª
+v : 0 : 5ª
+g : 57 : 1ª
+g : 5 : 2ª
+g : 47 : 3ª
+g : 35 : 4ª
+g : 0 : 5ª
+f : 107 : 1ª
+f : 3 : 2ª
+f : 13 : 3ª
+f : 6 : 4ª
+f : 0 : 5ª
+h : 16 : 1ª
+h : 12 : 2ª
+h : 5 : 3ª
+h : 40 : 4ª
+h : 0 : 5ª
+z : 7 : 1ª
+z : 1 : 2ª
+z : 19 : 3ª
+z : 7 : 4ª
+z : 16 : 5ª
+j : 21 : 1ª
+j : 1 : 2ª
+j : 8 : 3ª
+j : 9 : 4ª
+j : 0 : 5ª
+x : 1 : 1ª
+x : 9 : 2ª
+x : 12 : 3ª
+x : 11 : 4ª
+x : 1 : 5ª
+q : 8 : 1ª
+q : 0 : 2ª
+q : 9 : 3ª
+q : 0 : 4ª
+q : 0 : 5ª
