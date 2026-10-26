@@ -23,6 +23,10 @@ def letter_count(words_list: list[str]) -> dict[tuple[str, int], int]:
             letter_count_dict[key] = letter_count_dict.get(key, 0) + 1
     return letter_count_dict
 
+def reading_letter_count(letter_count_dict: dict[tuple[str, int], int]) -> None:
+    for (letter, position), count in sorted(letter_count_dict.items(), key=lambda x: (-x[1], x[0])):
+        print(f"Letter: {letter}, Position: {position}, Count: {count}")
+
 def most_common_letter(letter_count_dict: dict[tuple[str, int], int], blacklist: list[tuple[str, int]]) -> tuple[str, int]:
     normalized_blacklist = {(letter.upper(), position) for letter, position in blacklist}
     filtered_dict = {k: v for k, v in letter_count_dict.items() if k not in normalized_blacklist}
@@ -30,7 +34,7 @@ def most_common_letter(letter_count_dict: dict[tuple[str, int], int], blacklist:
         raise ValueError("No eligible letters found.")
     return max(filtered_dict, key=filtered_dict.get)
 
-def find_best_word(words_list: list[str]) -> str:
+def find_best_word_by_letter_position(words_list: list[str]) -> str:
     if not words_list:
         raise ValueError("Cannot find a best word in an empty word list.")
 
@@ -86,9 +90,30 @@ def find_best_word_by_letter_frequency(words_list: list[str]) -> str:
         key=lambda word: sum(letter_counts[letter] for letter in word),
     )
 
+def black_letter(words_list: list[str], letter_list: list[str]) -> list[str]:
+    normalized_letters = [letter.upper() for letter in letter_list]
+    return [word for word in words_list if not any(letter in word.upper() for letter in normalized_letters)]
+
+def alg_yellow_letter(words_list: list[str], letter_pos: tuple[str, int]) -> list[str]:
+    pass
+
+def res_yellow_letter(words_list: list[str], letter_pos: tuple[str, int]) -> list[str]:
+    pass
+
+def alg_green_letter(words_list: list[str], letter_pos: tuple[str, int]) -> list[str]:
+    pass
+
+def res_green_letter(words_list: list[str], letter_pos: tuple[str, int]) -> list[str]:
+    pass
+
+
+
+
 
 words_list = file_to_list('termo_palavras_aceitas.txt')
-print(find_best_word(words_list))
+words_list = black_letter(words_list, ['a', 'R'])
+reading_letter_count(letter_count(words_list))
 print(find_best_word_by_letter_frequency(words_list))
+
 
 
