@@ -2,115 +2,124 @@ import csv
 from collections.abc import Callable
 from pathlib import Path
 
-import algorithm.functions as f
-import algorithm.termo_implementation as t
+from algorithm import algo2
+from algorithm import functions as f
 
 DATASET_DIR = Path(__file__).resolve().parent / "dataset"
-INITIAL_WORDS_LIST = f.file_to_list(str(DATASET_DIR / "termo_palavras_aceitas.txt"))
+WORD_LIST_PATH = DATASET_DIR / "termo_palavras_aceitas.txt"
+RESULTS_PATH = DATASET_DIR / "resultados_todas_palavras.csv"
 
+WordFunction = Callable[[list[str]], str]
+AlgorithmFunction = Callable[[list[str], str, WordFunction, bool], int]
 
-def algorithm_step(
-    words_list: list[str],
-    answer: str,
-    word_function: Callable[[list[str]], str],
-    mostrar_progresso: bool = True,
-) -> list[str]:
-    num_words_before = f.count_words(words_list)
-    guess = word_function(words_list)
-    if mostrar_progresso:
-        print(f"Guess: {guess}")
-    if guess.upper() == answer.upper():
-        if mostrar_progresso:
-            print("The algorithm find the anwser!\n")
-        return []
+WORD_FUNCTIONS: tuple[tuple[str, WordFunction], ...] = (
+    (
+        "position_true",
+        lambda candidates: f.find_best_word_by_letter_position(
+            candidates,
+            allow_repeated_letters=True,
+        ),
+    ),
+    (
+        "position_false",
+        lambda candidates: f.find_best_word_by_letter_position(
+            candidates,
+            allow_repeated_letters=False,
+        ),
+    ),
+    (
+        "frequency_true",
+        lambda candidates: f.find_best_word_by_letter_frequency(
+            candidates,
+            allow_repeated_letters=True,
+        ),
+    ),
+    (
+        "frequency_false",
+        lambda candidates: f.find_best_word_by_letter_frequency(
+            candidates,
+            allow_repeated_letters=False,
+        ),
+    ),
+)
 
-    feedback = t.evaluate_guess(answer, guess, set(words_list))
-    words_list = [
-        candidate
-        for candidate in words_list
-        if t.score_guess(candidate, guess) == feedback
-    ]
-    if mostrar_progresso:
-        f.reading_words_list(words_list, 15)
-        num_words_after = f.count_words(words_list)
-        print(f"Possible words reduced from {num_words_before} to {num_words_after}")
-    return words_list
-
-
-def algorithm(
-    words_list: list[str],
-    answer: str,
-    word_function: Callable[[list[str]], str],
-    mostrar_progresso: bool = True,
-) -> int:
-    count = 0
-    while words_list:
-        words_list = algorithm_step(
-            words_list,
-            answer,
-            word_function,
-            mostrar_progresso,
-        )
-        count += 1
-    return count
+ALGORITHMS: tuple[tuple[str, AlgorithmFunction], ...] = (
+    ("inclusive", algo2.inclusive_algorithm),
+    ("exclusive", algo2.exclusive_algorithm),
+)
 
 
 def run_algorithm_and_check(
-    words_list: list[str],
+    word_list: list[str],
     answer: str,
-    word_function: Callable[[list[str]], str],
+    algorithm: AlgorithmFunction,
+    word_function: WordFunction,
 ) -> tuple[int, bool]:
     last_guess = ""
 
     def remember_guess(candidates: list[str]) -> str:
         nonlocal last_guess
-        last_guess = word_function(candidates)
+        last_guess = word_function(candidates).strip().upper()
         return last_guess
 
-    steps = algorithm(words_list.copy(), answer, remember_guess, mostrar_progresso=False)
-    return steps, last_guess.upper() == answer.upper()
+    try:
+        attempts = algorithm(
+            word_list.copy(),
+            answer,
+            remember_guess,
+            show_progress=False,
+        )
+    except RuntimeError:
+        return -1, False
+
+    solved = last_guess == answer.strip().upper()
+    return (attempts if solved else -1), solved
 
 
 def run_all_answers(
-    words_list: list[str],
-    answers: list[str],
+    word_list: list[str],
     output_path: Path,
-) -> int:
-    results = []
-    strategies = (
-        ("position", f.find_best_word_by_letter_position),
-        ("frequency", f.find_best_word_by_letter_frequency),
-    )
-
-    for answer in answers:
-        result_row: list[str | int | bool] = [answer]
-        for _name, strategy in strategies:
-            steps, solved = run_algorithm_and_check(words_list, answer, strategy)
-            result_row.extend((steps, solved))
-        results.append(result_row)
-
+) -> tuple[int, int]:
+    total_answers = len(word_list)
+    completed_answers = 0
     with output_path.open("w", newline="", encoding="utf-8") as file:
         writer = csv.writer(file)
         writer.writerow(
-            (
-                "answer",
-                "position_steps",
-                "position_solved",
-                "frequency_steps",
-                "frequency_solved",
-            )
+            ("answer", "algorithm", "word_function", "attempts", "solved")
         )
-        writer.writerows(results)
 
-    return len(results)
+        for answer in word_list:
+            for algorithm_name, algorithm in ALGORITHMS:
+                for word_function_name, word_function in WORD_FUNCTIONS:
+                    attempts, solved = run_algorithm_and_check(
+                        word_list,
+                        answer,
+                        algorithm,
+                        word_function,
+                    )
+                    writer.writerow(
+                        (
+                            answer,
+                            algorithm_name,
+                            word_function_name,
+                            attempts,
+                            solved,
+                        )
+                    )
+
+            completed_answers += 1
+            if completed_answers % 100 == 0:
+                file.flush()
+                print(f"Respostas processadas: {completed_answers}/{total_answers}")
+
+    return completed_answers, completed_answers * len(ALGORITHMS) * len(WORD_FUNCTIONS)
 
 
 if __name__ == "__main__":
-    results_path = DATASET_DIR / "resultados_algoritmos.csv"
-    total = run_all_answers(
-        INITIAL_WORDS_LIST,
-        INITIAL_WORDS_LIST,
-        results_path,
+    initial_word_list = f.file_to_list(str(WORD_LIST_PATH))
+    answers_processed, simulations = run_all_answers(
+        initial_word_list,
+        RESULTS_PATH,
     )
-    print(f"Simulações concluídas: {total} respostas.")
-    print(f"Resultados salvos em: {results_path}")
+    print(f"Simulações concluídas: {simulations} para {answers_processed} respostas.")
+    print(f"Resultados salvos em: {RESULTS_PATH}")
