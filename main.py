@@ -4,12 +4,12 @@ from concurrent.futures import ProcessPoolExecutor
 import os
 from pathlib import Path
 
-from algorithm import algo2
+from algorithm.partition import algorithm as partition
 from algorithm import functions as f
 
 DATASET_DIR = Path(__file__).resolve().parent / "dataset"
 WORD_LIST_PATH = DATASET_DIR / "termo_palavras_aceitas.txt"
-EXCLUSIVE_RESULTS_PATH = DATASET_DIR / "resultados_exclusivo_busca_limitada.csv"
+PARTITION_RESULTS_PATH = DATASET_DIR / "resultados_partition_busca_limitada.csv"
 
 WordFunction = Callable[[list[str]], str]
 AlgorithmFunction = Callable[..., int]
@@ -23,8 +23,8 @@ def _initialize_worker(
 ) -> None:
     global _WORKER_WORD_LIST
     _WORKER_WORD_LIST = word_list
-    algo2._get_feedback_matrix(word_list)
-    algo2.install_bounded_guess_overrides(bounded_overrides)
+    partition._get_feedback_matrix(word_list)
+    partition.install_bounded_guess_overrides(bounded_overrides)
 
 
 def run_algorithm_and_check(
@@ -54,13 +54,13 @@ def _process_answer_batch(
         attempts, solved = run_algorithm_and_check(
             _WORKER_WORD_LIST,
             answer,
-            algo2.exclusive_algorithm,
+            partition.partition_algorithm,
             _unused_word_function,
         )
         rows.append(
             (
                 answer,
-                "exclusive",
+                "partition",
                 "partition_p2_bounded",
                 attempts,
                 solved,
@@ -93,7 +93,7 @@ def run_all_answers(
             )
         return 0, 0
 
-    bounded_overrides, override_report = algo2.prepare_bounded_guess_overrides(
+    bounded_overrides, override_report = partition.prepare_bounded_guess_overrides(
         word_list,
         max_attempts=6,
     )
@@ -149,7 +149,7 @@ if __name__ == "__main__":
     initial_word_list = f.file_to_list(str(WORD_LIST_PATH))
     answers_processed, simulations = run_all_answers(
         initial_word_list,
-        EXCLUSIVE_RESULTS_PATH,
+        PARTITION_RESULTS_PATH,
     )
     print(f"Simulações concluídas: {simulations} para {answers_processed} respostas.")
-    print(f"Resultados salvos em: {EXCLUSIVE_RESULTS_PATH}")
+    print(f"Resultados salvos em: {PARTITION_RESULTS_PATH}")

@@ -1,3 +1,5 @@
+"""Partition-based solver implementation."""
+
 from collections.abc import Callable
 import hashlib
 import os
@@ -6,18 +8,15 @@ import random
 
 import numpy as np
 
-if __package__:
-    from . import functions as f
-    from . import termo_implementation as t
-else:
-    import functions as f
-    import termo_implementation as t
+from algorithm import functions as f
+from algorithm import termo_implementation as t
 
-DATASET_PATH = Path(__file__).resolve().parent.parent / "dataset" / "termo_palavras_aceitas.txt"
-initial_word_list = f.file_to_list(str(DATASET_PATH))
+DATASET_PATH = (
+    Path(__file__).resolve().parent.parent.parent
+    / "dataset"
+    / "termo_palavras_aceitas.txt"
+)
 
-FilterFunction = Callable[[list[str], f.Feedback], list[str]]
-ExactFilterFunction = Callable[[list[str], str, f.Feedback], list[str]]
 WordFunction = Callable[[list[str]], str]
 FeedbackMatrix = np.ndarray
 
@@ -407,75 +406,7 @@ def _choose_partition_guess(
     return selected_index
 
 
-def algorithm_step(
-    word_list: list[str],
-    answer: str,
-    word_function: WordFunction,
-    filter_function: FilterFunction,
-    show_progress: bool = True,
-    accepted_words: set[str] | None = None,
-    exact_filter: ExactFilterFunction | None = None,
-) -> list[str]:
-    """
-    Runs one guess and filters the remaining possible answers.
-    """
-    guess = word_function(word_list)
-    if show_progress:
-        print(f"Guess: {guess}")
-    if guess.upper() == answer.upper():
-        if show_progress:
-            print("The algorithm find the anwser!\n")
-        return []
-    num_words_before = len(word_list)
-    feedback = t.evaluate_guess(
-        answer,
-        guess,
-        accepted_words if accepted_words is not None else set(word_list),
-    )
-    if exact_filter is not None:
-        word_list = exact_filter(word_list, guess, feedback)
-    else:
-        word_list = filter_function(word_list, feedback)
-    if not word_list:
-        raise RuntimeError(
-            "Nenhuma palavra candidata restou após o feedback. "
-            "Verifique se a resposta está na lista de palavras e se o feedback está correto."
-        )
-    if show_progress:
-        f.reading_word_list(word_list, 15)
-        num_words_after = len(word_list)
-        print(f"Possible words reduced from {num_words_before} to {num_words_after}")
-    return word_list
-
-
-def inclusive_algorithm(word_list: list[str], answer: str, word_function: WordFunction, show_progress: bool = True) -> int:
-    """
-    Runs algorithm_step with the inclusive filter until it finds the answer.
-    """
-    answer = answer.strip().upper()
-    accepted_words = {word.strip().upper() for word in word_list}
-    if answer not in accepted_words:
-        raise ValueError(
-            f"A resposta {answer!r} não está na lista de palavras candidatas. "
-            "O algoritmo inclusivo só consegue encontrá-la se ela estiver nessa lista."
-        )
-
-    count = 0
-    while word_list:
-        word_list = algorithm_step(
-            word_list,
-            answer,
-            word_function,
-            f.inclusive_filter_by_feedback,
-            show_progress,
-            accepted_words,
-            f.consistent_filter,
-        )
-        count += 1
-    return count
-
-
-def exclusive_algorithm(
+def partition_algorithm(
     word_list: list[str],
     answer: str,
     word_function: WordFunction,
@@ -557,45 +488,3 @@ def exclusive_algorithm(
             print(
                 f"Possible words reduced to {len(possible_answers)}"
             )
-
-def run_all(
-    word_list: list[str],
-    answer: str,
-    show_progress: bool = True,
-    exclusive: bool = True,
-) -> dict[str, int]:
-    algorithm = exclusive_algorithm if exclusive else inclusive_algorithm
-    algorithm_name = "exclusivo" if exclusive else "inclusivo"
-    strategies = (
-        ("position_true", "posição True", lambda candidates: f.find_best_word_by_letter_position(candidates, allow_repeated_letters=True)),
-        ("position_false", "posição False", lambda candidates: f.find_best_word_by_letter_position(candidates, allow_repeated_letters=False)),
-        ("frequency_true", "frequência True", lambda candidates: f.find_best_word_by_letter_frequency(candidates, allow_repeated_letters=True)),
-        ("frequency_false", "frequência False", lambda candidates: f.find_best_word_by_letter_frequency(candidates, allow_repeated_letters=False)),
-    )
-
-    results: dict[str, int] = {}
-    for result_key, strategy_name, word_function in strategies:
-        attempts = algorithm(
-            word_list.copy(),
-            answer,
-            word_function,
-            show_progress,
-        )
-        results[result_key] = attempts
-        print(
-            f"O algoritmo {algorithm_name} de {strategy_name} "
-            f"achou a resposta em {attempts} tentativas."
-        )
-
-    for result_key, strategy_name, _word_function in strategies:
-        print(
-            f"O algoritmo {algorithm_name} de {strategy_name} "
-            f"achou a resposta em {results[result_key]} tentativas."
-        )
-
-    return results
-
-
-if __name__ == "__main__":
-    answer = input("Qual será a resposta do jogo?\n-> ")
-    run_all(initial_word_list, answer)
