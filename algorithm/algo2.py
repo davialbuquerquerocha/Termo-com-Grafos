@@ -167,7 +167,7 @@ def _choose_partition_guess(
 
     answer_indices = np.asarray(possible_indices, dtype=np.intp)
     possible_set = set(possible_indices)
-    best_cost: int | None = None
+    best_cost: float | None = None
     best_indices: list[int] = []
     candidate_count = matrix.shape[0]
 
@@ -281,10 +281,16 @@ def inclusive_algorithm(word_list: list[str], answer: str, word_function: WordFu
     return count
 
 
-def exclusive_algorithm(word_list: list[str], answer: str, word_function: WordFunction, show_progress: bool = True) -> int:
+def exclusive_algorithm(
+    word_list: list[str],
+    answer: str,
+    word_function: WordFunction,
+    show_progress: bool = True,
+) -> int:
     """
-    Solve using exact feedback partitions; ``word_function`` is retained for API
-    compatibility with ``run_all`` and ``main.py`` but is intentionally ignored.
+    Solve using exact feedback partitions with squared group sizes.
+
+    ``word_function`` is retained for API compatibility and intentionally ignored.
     """
     answer = answer.strip().upper()
     normalized_words = [word.strip().upper() for word in word_list]

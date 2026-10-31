@@ -9,41 +9,10 @@ from algorithm import functions as f
 
 DATASET_DIR = Path(__file__).resolve().parent / "dataset"
 WORD_LIST_PATH = DATASET_DIR / "termo_palavras_aceitas.txt"
-RESULTS_PATH = DATASET_DIR / "resultados_todas_palavras.csv"
+EXCLUSIVE_RESULTS_PATH = DATASET_DIR / "resultados_exclusivo_p2.csv"
 
 WordFunction = Callable[[list[str]], str]
-AlgorithmFunction = Callable[[list[str], str, WordFunction, bool], int]
-
-WORD_FUNCTIONS: tuple[tuple[str, WordFunction], ...] = (
-    (
-        "position_true",
-        lambda candidates: f.find_best_word_by_letter_position(
-            candidates,
-            allow_repeated_letters=True,
-        ),
-    ),
-    (
-        "position_false",
-        lambda candidates: f.find_best_word_by_letter_position(
-            candidates,
-            allow_repeated_letters=False,
-        ),
-    ),
-    (
-        "frequency_true",
-        lambda candidates: f.find_best_word_by_letter_frequency(
-            candidates,
-            allow_repeated_letters=True,
-        ),
-    ),
-    (
-        "frequency_false",
-        lambda candidates: f.find_best_word_by_letter_frequency(
-            candidates,
-            allow_repeated_letters=False,
-        ),
-    ),
-)
+AlgorithmFunction = Callable[..., int]
 
 _WORKER_WORD_LIST: list[str] = []
 
@@ -78,31 +47,26 @@ def _process_answer_batch(
 ) -> list[tuple[str, str, str, int, bool]]:
     rows: list[tuple[str, str, str, int, bool]] = []
     for answer in answers:
-        for word_function_name, word_function in WORD_FUNCTIONS:
-            attempts, solved = run_algorithm_and_check(
-                _WORKER_WORD_LIST,
-                answer,
-                algo2.inclusive_algorithm,
-                word_function,
-            )
-            rows.append(
-                (
-                    answer,
-                    "inclusive",
-                    word_function_name,
-                    attempts,
-                    solved,
-                )
-            )
-
         attempts, solved = run_algorithm_and_check(
             _WORKER_WORD_LIST,
             answer,
             algo2.exclusive_algorithm,
-            WORD_FUNCTIONS[0][1],
+            _unused_word_function,
         )
-        rows.append((answer, "exclusive", "partition", attempts, solved))
+        rows.append(
+            (
+                answer,
+                "exclusive",
+                "partition_p2",
+                attempts,
+                solved,
+            )
+        )
     return rows
+
+
+def _unused_word_function(candidates: list[str]) -> str:
+    return candidates[0]
 
 
 def run_all_answers(
@@ -117,6 +81,14 @@ def run_all_answers(
         raise ValueError("max_workers deve ser maior que zero.")
 
     total_answers = len(word_list)
+    if not total_answers:
+        with output_path.open("w", newline="", encoding="utf-8") as file:
+            writer = csv.writer(file)
+            writer.writerow(
+                ("answer", "algorithm", "word_function", "attempts", "solved")
+            )
+        return 0, 0
+
     requested_workers = max_workers or os.cpu_count() or 1
     batch_count = (total_answers + batch_size - 1) // batch_size
     worker_count = min(requested_workers, max(1, batch_count))
@@ -132,8 +104,8 @@ def run_all_answers(
         )
 
         print(
-            f"Processando {total_answers} respostas com "
-            f"{worker_count} processos."
+            f"Processando {total_answers} respostas com o peso p=2 "
+            f"em {worker_count} processos."
         )
         with ProcessPoolExecutor(
             max_workers=worker_count,
@@ -147,9 +119,7 @@ def run_all_answers(
             ):
                 writer.writerows(batch_rows)
                 previous_completed = completed_answers
-                completed_answers += len(batch_rows) // (
-                    len(WORD_FUNCTIONS) + 1
-                )
+                completed_answers += len(batch_rows)
                 if completed_answers // 100 > previous_completed // 100:
                     file.flush()
                     print(
@@ -157,14 +127,14 @@ def run_all_answers(
                         f"{completed_answers}/{total_answers}"
                     )
 
-    return total_answers, total_answers * (len(WORD_FUNCTIONS) + 1)
+    return total_answers, total_answers
 
 
 if __name__ == "__main__":
     initial_word_list = f.file_to_list(str(WORD_LIST_PATH))
     answers_processed, simulations = run_all_answers(
         initial_word_list,
-        RESULTS_PATH,
+        EXCLUSIVE_RESULTS_PATH,
     )
     print(f"Simulações concluídas: {simulations} para {answers_processed} respostas.")
-    print(f"Resultados salvos em: {RESULTS_PATH}")
+    print(f"Resultados salvos em: {EXCLUSIVE_RESULTS_PATH}")

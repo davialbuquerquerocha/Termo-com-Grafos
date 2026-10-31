@@ -101,8 +101,7 @@ class AlgorithmTests(unittest.TestCase):
         self.assertLessEqual(statistics.mean(attempts), 4.2)
         self.assertLessEqual(sum(value > 6 for value in attempts), 15)
         self.assertLessEqual(max(attempts), 8)
-        word_key = algo2._words_key(self.words)
-        first_guess_index = algo2._FIRST_GUESS_CACHE[word_key]
+        first_guess_index = algo2._FIRST_GUESS_CACHE[algo2._words_key(self.words)]
         self.assertEqual(self.words[first_guess_index], "SORIA")
 
     def test_main_preserves_csv_columns(self) -> None:
@@ -122,15 +121,9 @@ class AlgorithmTests(unittest.TestCase):
                     ["answer", "algorithm", "word_function", "attempts", "solved"],
                 )
                 rows = list(reader)
-        self.assertEqual(len(rows), len(words) * (4 + 1))
-        self.assertEqual(
-            sum(row[1] == "exclusive" and row[2] == "partition" for row in rows),
-            len(words),
-        )
-        self.assertEqual(
-            sum(row[1] == "inclusive" for row in rows),
-            len(words) * 4,
-        )
+        self.assertEqual(len(rows), len(words))
+        self.assertEqual({row[2] for row in rows}, {"partition_p2"})
+        self.assertTrue(all(row[1] == "exclusive" for row in rows))
         self.assertTrue(all(row[-1] == "True" for row in rows))
 
     def test_main_reports_expected_solver_errors_as_unsolved(self) -> None:

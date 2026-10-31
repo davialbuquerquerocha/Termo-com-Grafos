@@ -10,8 +10,11 @@ e pré-calcula uma matriz NumPy. O arquivo `.npy` é armazenado em
 Instale a dependência com `pip install -r requirements.txt`.
 
 Execute os testes com `python -m unittest discover -s tests -v`. A simulação de
-`main.py` mantém as colunas `answer, algorithm, word_function, attempts, solved`
-no CSV. As respostas são processadas em paralelo usando por padrão todos os
-processadores lógicos disponíveis; o CSV é escrito pelo processo principal e
-mantém a ordem original. Para limitar workers ao chamar a função, use
+`main.py` calcula apenas o algoritmo exclusivo com o custo original de potência
+2; ela não recalcula o algoritmo inclusivo. O resultado é gravado em
+`dataset/resultados_exclusivo_p2.csv`, mantendo as colunas
+`answer, algorithm, word_function, attempts, solved`. As respostas são
+processadas em paralelo usando por padrão todos os processadores lógicos
+disponíveis; o CSV é escrito pelo processo principal e mantém a ordem original.
+Para limitar workers ao chamar a função, use
 `run_all_answers(words, output_path, max_workers=4)`.
