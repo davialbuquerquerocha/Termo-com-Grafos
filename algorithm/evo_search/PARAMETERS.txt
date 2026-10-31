@@ -1,0 +1,14 @@
+PARAMETER_NOISE = 0.5                  # how noisy will be the search
+MAX_ITERATIONS = 300                   # hard stop
+PATIENCE = 40                          # stop after this many non-improving proposals
+STEP_FRACTION = 0.15                   # INITIAL proposal radius as a fraction of ||weights|| (then adapted)
+RULE_WINDOW = 20                       # 1/5th rule: proposals per adaptation check
+RULE_TARGET = 0.2                      # 1/5th rule: target success rate
+RULE_FACTOR = 1.4                      # 1/5th rule: grow/shrink multiplier when off target
+MIN_STEP_FRACTION = 0.001              # 1/5th rule: never let the step collapse to zero
+GRID_SEARCH = True                     # True: sweep a coarse grid first, then refine with ES
+GRID_OFFSETS = (-1.5, -0.5, 0.5, 1.5)  # grid = current weights + these offsets (per weight)
+SEED = 7                               # seed for rng
+MAX_GUESSES = 6                        # Termo standard; games needing MORE guesses than this are counted
+FAIL_PENALTY = 1000                    # lexicographic weight: one over-threshold game outweighs any average difference
+PARALLEL_WORKERS = 17                  # games evaluated in parallel (physical CPU cores; set 1 for serial)
