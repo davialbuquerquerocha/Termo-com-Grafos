@@ -2,6 +2,11 @@
 functions.py funcitons for the algorithms
 """
 
+if __package__:
+    from .termo_implementation import score_guess
+else:
+    from termo_implementation import score_guess
+
 Feedback = tuple[list[tuple[str, int]], list[tuple[str, int]], list[tuple[str, int]]]
 VOWELS = frozenset("AEIOU")
 
@@ -22,7 +27,8 @@ def is_word_in_list(word: str, word_list: list[str]) -> bool:
     Checks whether a word is in the list, ignoring case and surrounding whitespace.
     """
     normalized_word = word.strip().upper()
-    return any(normalized_word == candidate.strip().upper() for candidate in word_list)
+    normalized_words = {candidate.strip().upper() for candidate in word_list}
+    return normalized_word in normalized_words
 
 def reading_word_list(word_list: list[str], word_per_line: int):
     """
@@ -37,12 +43,9 @@ def reading_word_list(word_list: list[str], word_per_line: int):
 
 def count_words(word_list: list[str]) -> int:
     """
-    You really need this?
+    Returns the number of words in the list.
     """
-    count = 0
-    for word in word_list:
-        count += 1
-    return count
+    return len(word_list)
 
 def letter_count(word_list: list[str]) -> dict[tuple[str, int], int]:
     """
@@ -188,6 +191,18 @@ def inclusive_filter_by_feedback(word_list: list[str], feedback: Feedback) -> li
     filtered_words = yellow_letter(filtered_words, yellow_positions, green_positions)
     filtered_words = green_letter(filtered_words, green_positions)
     return filtered_words
+
+def consistent_filter(
+    word_list: list[str],
+    guess: str,
+    feedback: Feedback,
+) -> list[str]:
+    """Keep only words whose exact Wordle score matches the observed feedback."""
+    normalized_guess = guess.strip().upper()
+    return [
+        word for word in word_list
+        if score_guess(word.strip().upper(), normalized_guess) == feedback
+    ]
 
 def exclusive_filter_by_feedback(word_list: list[str], feedback: Feedback) -> list[str]:
     """

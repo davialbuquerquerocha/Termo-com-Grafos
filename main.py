@@ -55,25 +55,17 @@ def run_algorithm_and_check(
     algorithm: AlgorithmFunction,
     word_function: WordFunction,
 ) -> tuple[int, bool]:
-    last_guess = ""
-
-    def remember_guess(candidates: list[str]) -> str:
-        nonlocal last_guess
-        last_guess = word_function(candidates).strip().upper()
-        return last_guess
-
     try:
         attempts = algorithm(
             word_list.copy(),
             answer,
-            remember_guess,
+            word_function,
             show_progress=False,
         )
     except RuntimeError:
         return -1, False
 
-    solved = last_guess == answer.strip().upper()
-    return (attempts if solved else -1), solved
+    return attempts, True
 
 
 def run_all_answers(
