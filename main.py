@@ -9,7 +9,7 @@ from algorithm import functions as f
 
 DATASET_DIR = Path(__file__).resolve().parent / "dataset"
 WORD_LIST_PATH = DATASET_DIR / "termo_palavras_aceitas.txt"
-EXCLUSIVE_RESULTS_PATH = DATASET_DIR / "resultados_exclusivo_p2.csv"
+EXCLUSIVE_RESULTS_PATH = DATASET_DIR / "resultados_exclusivo_busca_limitada.csv"
 
 WordFunction = Callable[[list[str]], str]
 AlgorithmFunction = Callable[..., int]
@@ -17,10 +17,14 @@ AlgorithmFunction = Callable[..., int]
 _WORKER_WORD_LIST: list[str] = []
 
 
-def _initialize_worker(word_list: list[str]) -> None:
+def _initialize_worker(
+    word_list: list[str],
+    bounded_overrides: dict[tuple[str, bytes], int],
+) -> None:
     global _WORKER_WORD_LIST
     _WORKER_WORD_LIST = word_list
     algo2._get_feedback_matrix(word_list)
+    algo2.install_bounded_guess_overrides(bounded_overrides)
 
 
 def run_algorithm_and_check(
@@ -57,7 +61,7 @@ def _process_answer_batch(
             (
                 answer,
                 "exclusive",
-                "partition_p2",
+                "partition_p2_bounded",
                 attempts,
                 solved,
             )
@@ -89,6 +93,17 @@ def run_all_answers(
             )
         return 0, 0
 
+    bounded_overrides, override_report = algo2.prepare_bounded_guess_overrides(
+        word_list,
+        max_attempts=6,
+    )
+    for branch_size, baseline_attempts, guess, bounded_attempts in override_report:
+        print(
+            f"Fallback limitado: ramo com {branch_size} candidatas, "
+            f"p=2 chegava a {baseline_attempts}; {guess} limita a "
+            f"{bounded_attempts} tentativas."
+        )
+
     requested_workers = max_workers or os.cpu_count() or 1
     batch_count = (total_answers + batch_size - 1) // batch_size
     worker_count = min(requested_workers, max(1, batch_count))
@@ -110,7 +125,7 @@ def run_all_answers(
         with ProcessPoolExecutor(
             max_workers=worker_count,
             initializer=_initialize_worker,
-            initargs=(word_list,),
+            initargs=(word_list, bounded_overrides),
         ) as executor:
             completed_answers = 0
             for batch_rows in executor.map(

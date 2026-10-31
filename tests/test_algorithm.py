@@ -6,6 +6,9 @@ import statistics
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
+
+import numpy as np
 
 from algorithm import algo2
 from algorithm import functions as f
@@ -86,6 +89,47 @@ class AlgorithmTests(unittest.TestCase):
         self.assertLessEqual(attempts, 5)
         self.assertEqual(len(guessed), len(set(guessed)))
 
+    def test_exclusive_uses_prepared_bounded_override(self) -> None:
+        words = ["PATOS", "FATOS", "GATOS", "JATOS", "NATOS", "RATOS", "MATOS"]
+        matrix, index, word_key = algo2._get_feedback_matrix(words)
+        first_guess_index = algo2._choose_partition_guess(
+            list(range(len(words))),
+            set(),
+            matrix,
+            word_key,
+        )
+        answer = next(word for word in words if index[word] != first_guess_index)
+        first_guess = words[first_guess_index]
+        feedback_code = algo2._feedback_code(t.score_guess(answer, first_guess))
+        possible_indices = np.flatnonzero(
+            matrix[first_guess_index, :] == feedback_code
+        ).tolist()
+        override_index = next(
+            guess_index
+            for guess_index in range(len(words))
+            if guess_index != first_guess_index
+        )
+        override_key = word_key, algo2._candidate_state_key(possible_indices)
+        output = io.StringIO()
+
+        with patch.dict(
+            algo2._BOUNDED_GUESS_OVERRIDES,
+            {override_key: override_index},
+        ), redirect_stdout(output):
+            algo2.exclusive_algorithm(
+                words,
+                answer,
+                lambda _candidates: self.fail("word_function must be ignored"),
+                show_progress=True,
+            )
+
+        guesses = [
+            line.removeprefix("Guess: ")
+            for line in output.getvalue().splitlines()
+            if line.startswith("Guess: ")
+        ]
+        self.assertEqual(guesses[1], words[override_index])
+
     def test_exclusive_quality_on_seeded_sample(self) -> None:
         rng = random.Random(11)
         answers = rng.sample(self.words, 1500)
@@ -122,7 +166,7 @@ class AlgorithmTests(unittest.TestCase):
                 )
                 rows = list(reader)
         self.assertEqual(len(rows), len(words))
-        self.assertEqual({row[2] for row in rows}, {"partition_p2"})
+        self.assertEqual({row[2] for row in rows}, {"partition_p2_bounded"})
         self.assertTrue(all(row[1] == "exclusive" for row in rows))
         self.assertTrue(all(row[-1] == "True" for row in rows))
 
