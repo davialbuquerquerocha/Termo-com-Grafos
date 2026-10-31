@@ -1,5 +1,7 @@
 import csv
 from collections.abc import Callable
+from concurrent.futures import ProcessPoolExecutor
+import os
 from pathlib import Path
 
 from algorithm import algo2
@@ -43,10 +45,13 @@ WORD_FUNCTIONS: tuple[tuple[str, WordFunction], ...] = (
     ),
 )
 
-ALGORITHMS: tuple[tuple[str, AlgorithmFunction], ...] = (
-    ("inclusive", algo2.inclusive_algorithm),
-    ("exclusive", algo2.exclusive_algorithm),
-)
+_WORKER_WORD_LIST: list[str] = []
+
+
+def _initialize_worker(word_list: list[str]) -> None:
+    global _WORKER_WORD_LIST
+    _WORKER_WORD_LIST = word_list
+    algo2._get_feedback_matrix(word_list)
 
 
 def run_algorithm_and_check(
@@ -62,49 +67,97 @@ def run_algorithm_and_check(
             word_function,
             show_progress=False,
         )
-    except RuntimeError:
+    except (RuntimeError, AssertionError, ValueError):
         return -1, False
 
     return attempts, True
 
 
+def _process_answer_batch(
+    answers: list[str],
+) -> list[tuple[str, str, str, int, bool]]:
+    rows: list[tuple[str, str, str, int, bool]] = []
+    for answer in answers:
+        for word_function_name, word_function in WORD_FUNCTIONS:
+            attempts, solved = run_algorithm_and_check(
+                _WORKER_WORD_LIST,
+                answer,
+                algo2.inclusive_algorithm,
+                word_function,
+            )
+            rows.append(
+                (
+                    answer,
+                    "inclusive",
+                    word_function_name,
+                    attempts,
+                    solved,
+                )
+            )
+
+        attempts, solved = run_algorithm_and_check(
+            _WORKER_WORD_LIST,
+            answer,
+            algo2.exclusive_algorithm,
+            WORD_FUNCTIONS[0][1],
+        )
+        rows.append((answer, "exclusive", "partition", attempts, solved))
+    return rows
+
+
 def run_all_answers(
     word_list: list[str],
     output_path: Path,
+    max_workers: int | None = None,
+    batch_size: int = 25,
 ) -> tuple[int, int]:
+    if batch_size <= 0:
+        raise ValueError("batch_size deve ser maior que zero.")
+    if max_workers is not None and max_workers <= 0:
+        raise ValueError("max_workers deve ser maior que zero.")
+
     total_answers = len(word_list)
-    completed_answers = 0
+    requested_workers = max_workers or os.cpu_count() or 1
+    batch_count = (total_answers + batch_size - 1) // batch_size
+    worker_count = min(requested_workers, max(1, batch_count))
+    answer_batches = (
+        word_list[start:start + batch_size]
+        for start in range(0, total_answers, batch_size)
+    )
+
     with output_path.open("w", newline="", encoding="utf-8") as file:
         writer = csv.writer(file)
         writer.writerow(
             ("answer", "algorithm", "word_function", "attempts", "solved")
         )
 
-        for answer in word_list:
-            for algorithm_name, algorithm in ALGORITHMS:
-                for word_function_name, word_function in WORD_FUNCTIONS:
-                    attempts, solved = run_algorithm_and_check(
-                        word_list,
-                        answer,
-                        algorithm,
-                        word_function,
-                    )
-                    writer.writerow(
-                        (
-                            answer,
-                            algorithm_name,
-                            word_function_name,
-                            attempts,
-                            solved,
-                        )
+        print(
+            f"Processando {total_answers} respostas com "
+            f"{worker_count} processos."
+        )
+        with ProcessPoolExecutor(
+            max_workers=worker_count,
+            initializer=_initialize_worker,
+            initargs=(word_list,),
+        ) as executor:
+            completed_answers = 0
+            for batch_rows in executor.map(
+                _process_answer_batch,
+                answer_batches,
+            ):
+                writer.writerows(batch_rows)
+                previous_completed = completed_answers
+                completed_answers += len(batch_rows) // (
+                    len(WORD_FUNCTIONS) + 1
+                )
+                if completed_answers // 100 > previous_completed // 100:
+                    file.flush()
+                    print(
+                        f"Respostas processadas: "
+                        f"{completed_answers}/{total_answers}"
                     )
 
-            completed_answers += 1
-            if completed_answers % 100 == 0:
-                file.flush()
-                print(f"Respostas processadas: {completed_answers}/{total_answers}")
-
-    return completed_answers, completed_answers * len(ALGORITHMS) * len(WORD_FUNCTIONS)
+    return total_answers, total_answers * (len(WORD_FUNCTIONS) + 1)
 
 
 if __name__ == "__main__":

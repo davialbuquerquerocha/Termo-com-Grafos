@@ -38,9 +38,6 @@ def _words_key(word_list: list[str]) -> str:
     return digest.hexdigest()
 
 
-_INITIAL_WORDS_KEY = _words_key(initial_word_list)
-
-
 def _feedback_code(feedback: f.Feedback) -> int:
     marks = [0] * 5
     for letter, position in feedback[1]:
@@ -318,11 +315,6 @@ def exclusive_algorithm(word_list: list[str], answer: str, word_function: WordFu
                     word_key,
                 )
                 _FIRST_GUESS_CACHE[word_key] = guess_index
-            if word_key == _INITIAL_WORDS_KEY and normalized_words[guess_index] != "SORIA":
-                raise RuntimeError(
-                    "O melhor primeiro palpite esperado para a lista atual é SORIA, "
-                    f"mas foi calculado {normalized_words[guess_index]}."
-                )
             guess = normalized_words[guess_index]
         else:
             guess_index = _choose_partition_guess(
@@ -345,12 +337,12 @@ def exclusive_algorithm(word_list: list[str], answer: str, word_function: WordFu
             return count
 
         feedback = t.evaluate_guess(answer, guess, accepted_words)
-        possible_answers = f.consistent_filter(
-            possible_answers,
-            guess,
-            feedback,
-        )
-        possible_indices = [word_indices[word] for word in possible_answers]
+        feedback_code = _feedback_code(feedback)
+        candidate_indices = np.asarray(possible_indices, dtype=np.intp)
+        possible_indices = candidate_indices[
+            matrix[guess_index, candidate_indices] == feedback_code
+        ].tolist()
+        possible_answers = [normalized_words[index] for index in possible_indices]
         assert possible_answers, "O feedback eliminou todas as respostas possíveis."
         assert answer in possible_answers, "A resposta correta foi removida dos candidatos."
         if show_progress:
