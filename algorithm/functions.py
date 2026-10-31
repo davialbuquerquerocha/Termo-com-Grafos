@@ -3,6 +3,7 @@ functions.py funcitons for the algorithms
 """
 
 Feedback = tuple[list[tuple[str, int]], list[tuple[str, int]], list[tuple[str, int]]]
+VOWELS = frozenset("AEIOU")
 
 def file_to_list(file_name: str) -> list[str]:
     """
@@ -194,11 +195,51 @@ def exclusive_filter_by_feedback(word_list: list[str], feedback: Feedback) -> li
     """
     black_positions, yellow_positions, green_positions = feedback
     known_non_black_positions = yellow_positions + green_positions
+    filtered_words = black_letter(word_list, black_positions, yellow_positions, green_positions)
+    filtered_words = yellow_letter(filtered_words, known_non_black_positions)
+    return filtered_words
+
+def exclusive_filter_by_feedback_preserving_green_vowels(
+    word_list: list[str],
+    feedback: Feedback,
+) -> list[str]:
+    """
+    Filters guesses exclusively while allowing green vowels in their positions.
+    """
+    black_positions, yellow_positions, green_positions = feedback
+    green_consonants = [
+        (letter, position)
+        for letter, position in green_positions
+        if letter.upper() not in VOWELS
+    ]
+    green_vowels = [
+        (letter, position)
+        for letter, position in green_positions
+        if letter.upper() in VOWELS
+    ]
     filtered_words = black_letter(
         word_list,
         black_positions,
         yellow_positions,
         green_positions,
     )
-    filtered_words = yellow_letter(filtered_words, known_non_black_positions)
-    return filtered_words
+    return yellow_letter(
+        filtered_words,
+        yellow_positions + green_consonants,
+        green_vowels,
+    )
+
+def exclusive_filter_by_feedback_ignoring_vowels(
+    word_list: list[str],
+    feedback: Feedback,
+) -> list[str]:
+    """
+    Applies the exclusive filter using only consonant feedback.
+    """
+    black_positions, yellow_positions, green_positions = feedback
+    consonant_feedback = (
+        [(letter, position) for letter, position in black_positions if letter.upper() not in VOWELS],
+        [(letter, position) for letter, position in yellow_positions if letter.upper() not in VOWELS],
+        [(letter, position) for letter, position in green_positions if letter.upper() not in VOWELS],
+    )
+    return exclusive_filter_by_feedback(word_list, consonant_feedback)

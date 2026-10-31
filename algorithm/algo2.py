@@ -64,6 +64,9 @@ def inclusive_algorithm(word_list: list[str], answer: str, word_function: WordFu
     return count
 
 def exclusive_algorithm(word_list: list[str], answer: str, word_function: WordFunction, show_progress: bool = True) -> int:
+    """
+    Uses progressively relaxed guess filters while keeping answer candidates accurate.
+    """
     answer = answer.strip().upper()
     if not f.is_word_in_list(answer, word_list):
         raise ValueError(
@@ -72,14 +75,27 @@ def exclusive_algorithm(word_list: list[str], answer: str, word_function: WordFu
         )
 
     possible_answers = [word.strip().upper() for word in word_list]
-    possible_guesses = possible_answers.copy()
+    possible_guess_pools = [
+        possible_answers.copy(),
+        possible_answers.copy(),
+        possible_answers.copy(),
+    ]
+    guess_filters = (
+        f.exclusive_filter_by_feedback,
+        f.exclusive_filter_by_feedback_preserving_green_vowels,
+        f.exclusive_filter_by_feedback_ignoring_vowels,
+    )
     guessed_words: set[str] = set()
     count = 0
 
     while len(possible_answers) > 1:
-        available_guesses = [
-            word for word in possible_guesses if word not in guessed_words
-        ]
+        available_guesses = []
+        for guess_pool in possible_guess_pools:
+            available_guesses = [
+                word for word in guess_pool if word not in guessed_words
+            ]
+            if available_guesses:
+                break
         if not available_guesses:
             available_guesses = [
                 word for word in possible_answers if word not in guessed_words
@@ -112,50 +128,25 @@ def exclusive_algorithm(word_list: list[str], answer: str, word_function: WordFu
                     "Verifique se a resposta está na lista de palavras e se o feedback está correto."
                 )
 
-            filtered_guesses = [
-                word
-                for word in f.exclusive_filter_by_feedback(candidates, feedback)
-                if word.strip().upper() not in guessed_words
-            ]
-            if not filtered_guesses:
-                varying_positions = {
-                    position
-                    for position in range(len(possible_answers[0]))
-                    if len({word[position] for word in possible_answers}) > 1
-                }
-                unknown_letters = {
-                    word[position]
-                    for word in possible_answers
-                    for position in varying_positions
-                }
-                probe_words = [
+            for pool_index, guess_filter in enumerate(guess_filters):
+                possible_guess_pools[pool_index] = [
                     word.strip().upper()
-                    for word in word_list
-                    if word.strip().upper() not in guessed_words
-                    and len(word.strip()) == len(possible_answers[0])
-                ]
-                if unknown_letters and probe_words:
-                    best_coverage = max(
-                        len(set(word) & unknown_letters) for word in probe_words
+                    for word in guess_filter(
+                        possible_guess_pools[pool_index],
+                        feedback,
                     )
-                    filtered_guesses = [
-                        word
-                        for word in probe_words
-                        if len(set(word) & unknown_letters) == best_coverage
-                    ]
-            if not filtered_guesses:
-                filtered_guesses = [
-                    word for word in possible_answers if word not in guessed_words
-                ]
-            if not filtered_guesses:
-                filtered_guesses = [
-                    word
-                    for word in word_list
                     if word.strip().upper() not in guessed_words
                 ]
-            return filtered_guesses
+            return next(
+                (
+                    guess_pool
+                    for guess_pool in possible_guess_pools
+                    if any(word not in guessed_words for word in guess_pool)
+                ),
+                possible_answers,
+            )
 
-        possible_guesses = algorithm_step(
+        algorithm_step(
             available_guesses,
             answer,
             remember_guess,
