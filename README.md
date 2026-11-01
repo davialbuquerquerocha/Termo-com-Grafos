@@ -44,9 +44,18 @@ Os solvers ficam organizados em pacotes separados:
   seguinte. Use `--sample-size 200 --seed 2026` para medir uma amostra
   determinística mantendo todo o vocabulário de palpites; `--profile` mostra
   tempos e contagens internas, `--checkpoint-interval` controla a frequência
-  de gravação e `--no-resume` recalcula a amostra selecionada. Os caches em
-  memória usam LRU limitado; os estados finalizados da busca são gravados no
-  SQLite a cada 1.000 estados.
+  de gravação, `--no-resume` recalcula a amostra selecionada e `--workers 4`
+  avalia respostas em quatro processos da CPU (o padrão é serial). Cada worker
+  usa um SQLite separado para o memo da busca; os resultados por resposta ficam
+  no banco principal. A busca pelo primeiro palpite `groups` continua serial.
+  Os caches em memória usam LRU limitado; os estados finalizados da busca são
+  gravados no SQLite a cada 1.000 estados.
+  Cada avaliação também salva em `dataset/` um JSON com a resposta, cada
+  palpite e o feedback observado naquele jogo, atualizado a cada checkpoint.
+  As sequências são simuladas individualmente para cada resposta, nunca
+  copiadas de palavras com caminhos parecidos. Ao final, o JSON inclui as
+  métricas agregadas; se interrompida, fica marcado como incompleto. Ao retomar,
+  jogos antigos sem sequência registrada são simulados novamente.
 - `algorithm/evo_search/` ajusta pesos por busca evolutiva. Consulte
   `algorithm/evo_search/info.txt` para os comandos, arquivos gerados e
   parâmetros ativos.

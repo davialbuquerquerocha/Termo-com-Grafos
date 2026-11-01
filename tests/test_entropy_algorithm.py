@@ -1,6 +1,7 @@
 from pathlib import Path
 from contextlib import redirect_stdout
 import io
+import json
 import random
 import tempfile
 import unittest
@@ -394,6 +395,11 @@ class EntropyAlgorithmTests(unittest.TestCase):
                 with (
                     patch.object(solver, "_load_answers", return_value=words),
                     patch.object(
+                        partition_functions,
+                        "DATASET_PATH",
+                        Path(directory) / "answers.txt",
+                    ),
+                    patch.object(
                         solver,
                         "_search_context",
                         return_value=context,
@@ -401,8 +407,29 @@ class EntropyAlgorithmTests(unittest.TestCase):
                     patch.object(
                         solver,
                         "_simulate_game_with_context",
-                        side_effect=lambda answer, all_answers, strategy, current_context, initial_guess: (
-                            attempt_counts[answer]
+                        side_effect=lambda answer, all_answers, strategy, current_context, initial_guess, guess_history: (
+                            (
+                                guess_history.extend(
+                                    [
+                                        {
+                                            "guess": (
+                                                "BBBBB"
+                                                if answer == "AAAAA"
+                                                else "AAAAA"
+                                            ),
+                                            "feedback": "PPPPP",
+                                        }
+                                    ]
+                                    * (attempt_counts[answer] - 1)
+                                    + [
+                                        {
+                                            "guess": answer,
+                                            "feedback": "VVVVV",
+                                        }
+                                    ]
+                                )
+                                or attempt_counts[answer]
+                            )
                             if answer in all_answers
                             and strategy == "entropy"
                             and current_context is context
@@ -421,11 +448,26 @@ class EntropyAlgorithmTests(unittest.TestCase):
 
                     simulate.reset_mock()
                     search_context.reset_mock()
+                    json_path = solver._evaluation_json_path(
+                        "entropy",
+                        helpers.evaluation_scope_key(words),
+                        "test",
+                    )
+                    json_path.unlink()
+                    rebuilt_evaluation = solver.evaluate_solver(
+                        answers=words,
+                        checkpoint_interval=1,
+                    )
+                    self.assertEqual(simulate.call_count, len(words))
+
+                    simulate.reset_mock()
+                    search_context.reset_mock()
                     resumed_evaluation = solver.evaluate_solver(
                         answers=words,
                         checkpoint_interval=1,
                     )
 
+                self.assertEqual(first_evaluation, rebuilt_evaluation)
                 self.assertEqual(first_evaluation, resumed_evaluation)
                 self.assertEqual(simulate.call_count, 0)
                 search_context.assert_called_once()
@@ -433,6 +475,80 @@ class EntropyAlgorithmTests(unittest.TestCase):
                 self.assertEqual(first_evaluation.distribution, {1: 1, 2: 1, 3: 1})
             finally:
                 helpers.close_memo_store()
+
+    def test_evaluate_solver_parallel_matches_serial(self) -> None:
+        words = ["AAAAA", "BBBBB", "CCCCC"]
+
+        with tempfile.TemporaryDirectory() as directory:
+            word_list_path = Path(directory) / "answers.txt"
+            word_list_path.write_text("\n".join(words), encoding="utf-8")
+            try:
+                with (
+                    patch.object(
+                        partition_functions,
+                        "DATASET_PATH",
+                        word_list_path,
+                    ),
+                    redirect_stdout(io.StringIO()),
+                ):
+                    serial_result = solver.evaluate_solver(
+                        "entropy",
+                        resume=False,
+                        checkpoint_interval=1,
+                        workers=1,
+                    )
+                    with helpers.profile_search() as profile:
+                        parallel_result = solver.evaluate_solver(
+                            "entropy",
+                            resume=False,
+                            checkpoint_interval=1,
+                            workers=2,
+                        )
+
+                self.assertEqual(parallel_result, serial_result)
+                self.assertEqual(parallel_result.total_games, len(words))
+                self.assertEqual(profile.worker_processes, 2)
+                json_files = list(Path(directory).glob("entropy_games_*.json"))
+                self.assertEqual(len(json_files), 1)
+                saved_results = json.loads(
+                    json_files[0].read_text(encoding="utf-8")
+                )
+                self.assertTrue(saved_results["complete"])
+                self.assertEqual(saved_results["total_games"], len(words))
+                self.assertEqual(
+                    [game["answer"] for game in saved_results["games"]],
+                    words,
+                )
+                feedback_context = solver._search_context(words)
+                for game in saved_results["games"]:
+                    self.assertEqual(len(game["guesses"]), game["attempts"])
+                    self.assertEqual(game["guesses"][-1]["guess"], game["answer"])
+                    self.assertEqual(game["guesses"][-1]["feedback"], "VVVVV")
+                    answer_index = feedback_context[1][game["answer"]]
+                    for step in game["guesses"]:
+                        guess_index = feedback_context[1][step["guess"]]
+                        self.assertEqual(
+                            step["feedback"],
+                            solver._feedback_text(
+                                int(feedback_context[2][guess_index, answer_index])
+                            ),
+                        )
+                self.assertIn("summary", saved_results)
+            finally:
+                helpers.close_memo_store()
+                key = partition_functions._words_key(words)
+                matrix = partition_functions._FEEDBACK_MATRIX_CACHE.pop(
+                    key,
+                    None,
+                )
+                if matrix is not None and getattr(matrix, "_mmap", None) is not None:
+                    matrix._mmap.close()
+                partition_functions._WORD_INDEX_CACHE.pop(key, None)
+                partition_functions._MATRIX_VALIDATED.discard(key)
+
+    def test_evaluate_solver_rejects_non_positive_worker_count(self) -> None:
+        with self.assertRaisesRegex(ValueError, "workers must be greater than zero"):
+            solver.evaluate_solver(workers=0)
 
     def test_in_memory_memo_respects_configured_size_limit(self) -> None:
         original_limit = helpers.MEMO_MEMORY_LIMIT

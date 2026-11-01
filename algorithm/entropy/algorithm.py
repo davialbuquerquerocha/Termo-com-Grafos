@@ -3,13 +3,16 @@
 import argparse
 from collections import Counter, OrderedDict
 from collections.abc import Callable, Sequence
+from concurrent.futures import ProcessPoolExecutor
 import hashlib
 import json
 import math
+import multiprocessing
 from pathlib import Path
 import random
+import re
 import tempfile
-from typing import Literal, NamedTuple, Sequence
+from typing import Literal, NamedTuple
 
 import numpy as np
 
@@ -28,6 +31,12 @@ _SearchContext = tuple[
     partition_functions.FeedbackMatrix,
     str,
 ]
+_WORKER_ANSWERS: list[str] = []
+_WORKER_STRATEGY: Strategy | None = None
+_WORKER_CONTEXT: _SearchContext | None = None
+_WORKER_MEMO_PATH: Path | None = None
+_WORKER_INITIAL_GUESS_INDEX: int | None = None
+_WORKER_PROFILE = False
 
 
 class SolverEvaluation(NamedTuple):
@@ -89,7 +98,10 @@ def _load_answers() -> list[str]:
     return answers
 
 
-def _search_context(candidates: list[str]) -> _SearchContext:
+def _search_context(
+    candidates: list[str],
+    memo_path: Path | None = None,
+) -> _SearchContext:
     guesses = _load_answers()
     for candidate in candidates:
         normalized_candidate = candidate.strip().upper()
@@ -99,7 +111,9 @@ def _search_context(candidates: list[str]) -> _SearchContext:
         guesses
     )
     helpers.configure_memo_store(
-        partition_functions.DATASET_PATH.with_name("entropy_memo.sqlite3"),
+        memo_path
+        if memo_path is not None
+        else partition_functions.DATASET_PATH.with_name("entropy_memo.sqlite3"),
         word_key,
     )
     return guesses, word_indices, matrix, word_key
@@ -386,6 +400,7 @@ def _simulate_game_with_context(
     strategy: Strategy,
     context: _SearchContext,
     initial_guess_index: int | None = None,
+    guess_history: list[dict[str, str]] | None = None,
 ) -> int:
     guesses, word_indices, matrix, _ = context
     candidates = all_answers.copy()
@@ -401,6 +416,13 @@ def _simulate_game_with_context(
     while True:
         attempts += 1
         feedback_code = int(matrix[guess_index, answer_index])
+        if guess_history is not None:
+            guess_history.append(
+                {
+                    "guess": guesses[guess_index],
+                    "feedback": _feedback_text(feedback_code),
+                }
+            )
         if feedback_code == winning_feedback:
             return attempts
 
@@ -427,16 +449,275 @@ def _simulate_game_with_context(
         )
 
 
+def _feedback_text(feedback_code: int) -> str:
+    feedback_marks = ("P", "A", "V")
+    return "".join(
+        feedback_marks[(feedback_code // (3**position)) % 3]
+        for position in range(5)
+    )
+
+
+def _simulate_and_capture_game(
+    answer: str,
+    all_answers: list[str],
+    strategy: Strategy,
+    context: _SearchContext,
+    initial_guess_index: int | None,
+) -> tuple[int, list[dict[str, str]]]:
+    guess_history: list[dict[str, str]] = []
+    attempts = _simulate_game_with_context(
+        answer,
+        all_answers,
+        strategy,
+        context,
+        initial_guess_index,
+        guess_history,
+    )
+    return attempts, guess_history
+
+
+def _initialize_evaluation_worker(
+    all_answers: list[str],
+    strategy: Strategy,
+    dataset_path: Path,
+    memo_path: Path,
+    worker_count: int,
+    initial_guess_index: int | None,
+    collect_profile: bool,
+) -> None:
+    global _WORKER_ANSWERS, _WORKER_STRATEGY, _WORKER_CONTEXT
+    global _WORKER_MEMO_PATH, _WORKER_INITIAL_GUESS_INDEX, _WORKER_PROFILE
+    partition_functions.DATASET_PATH = dataset_path
+    process_name = multiprocessing.current_process().name
+    worker_match = re.search(r"-(\d+)$", process_name)
+    if worker_match is None:
+        raise RuntimeError(f"Unable to identify evaluation worker {process_name!r}.")
+    worker_slot = (int(worker_match.group(1)) - 1) % worker_count
+    worker_memo_path = memo_path.with_name(
+        f"{memo_path.stem}_{worker_count}_{worker_slot}{memo_path.suffix}"
+    )
+    _WORKER_ANSWERS = all_answers
+    _WORKER_STRATEGY = strategy
+    _WORKER_MEMO_PATH = worker_memo_path
+    _WORKER_INITIAL_GUESS_INDEX = initial_guess_index
+    _WORKER_PROFILE = collect_profile
+    _WORKER_CONTEXT = _search_context(all_answers, worker_memo_path)
+
+
+def _process_evaluation_batch(
+    answers: list[str],
+) -> tuple[
+    list[tuple[str, int, list[dict[str, str]]]],
+    helpers.SearchProfile | None,
+]:
+    if (
+        _WORKER_STRATEGY is None
+        or _WORKER_CONTEXT is None
+        or _WORKER_MEMO_PATH is None
+    ):
+        raise RuntimeError("The evaluation worker was not initialized.")
+
+    helpers.configure_memo_store(
+        _WORKER_MEMO_PATH,
+        _WORKER_CONTEXT[3],
+    )
+    results: list[tuple[str, int, list[dict[str, str]]]] = []
+    try:
+        if _WORKER_PROFILE:
+            with helpers.profile_search() as profile:
+                for answer in answers:
+                    attempts, guess_history = _simulate_and_capture_game(
+                        answer,
+                        _WORKER_ANSWERS,
+                        _WORKER_STRATEGY,
+                        _WORKER_CONTEXT,
+                        _WORKER_INITIAL_GUESS_INDEX,
+                    )
+                    results.append((answer, attempts, guess_history))
+            return results, profile
+
+        for answer in answers:
+            attempts, guess_history = _simulate_and_capture_game(
+                answer,
+                _WORKER_ANSWERS,
+                _WORKER_STRATEGY,
+                _WORKER_CONTEXT,
+                _WORKER_INITIAL_GUESS_INDEX,
+            )
+            results.append((answer, attempts, guess_history))
+        return results, None
+    finally:
+        helpers.close_memo_store()
+
+
+def _merge_worker_profile(
+    destination: helpers.SearchProfile,
+    source: helpers.SearchProfile,
+) -> None:
+    destination.states_computed += source.states_computed
+    destination.memo_hits += source.memo_hits
+    destination.ranking_calls += source.ranking_calls
+    destination.ranking_seconds += source.ranking_seconds
+    destination.guess_evaluations += source.guess_evaluations
+    destination.evaluation_seconds += source.evaluation_seconds
+    destination.memo_reads += source.memo_reads
+    destination.memo_writes += source.memo_writes
+
+
+def _evaluation_json_path(
+    strategy: Strategy,
+    evaluation_key: str,
+    word_key: str,
+) -> Path:
+    settings_json = json.dumps(
+        _search_settings(),
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    settings_key = hashlib.sha256(settings_json.encode("utf-8")).hexdigest()[:12]
+    return partition_functions.DATASET_PATH.with_name(
+        f"entropy_games_{strategy}_{evaluation_key[:12]}_"
+        f"{word_key[:12]}_{settings_key}.json"
+    )
+
+
+def _load_evaluation_json(
+    path: Path,
+    strategy: Strategy,
+    evaluation_key: str,
+    word_key: str,
+) -> tuple[dict[str, int], dict[str, list[dict[str, str]]]]:
+    if not path.exists():
+        return {}, {}
+
+    try:
+        game_results = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        raise ValueError(f"Unable to read saved game sequences from {path}.") from error
+    if (
+        not isinstance(game_results, dict)
+        or game_results.get("format_version") not in (1, 2)
+        or game_results.get("strategy") != strategy
+        or game_results.get("evaluation_key") != evaluation_key
+        or game_results.get("word_list_key") != word_key
+        or game_results.get("search_settings") != _search_settings()
+        or not isinstance(game_results.get("games"), list)
+    ):
+        raise ValueError(f"Saved game sequence metadata is invalid in {path}.")
+
+    attempts_by_answer: dict[str, int] = {}
+    guess_histories: dict[str, list[dict[str, str]]] = {}
+    for game in game_results["games"]:
+        if not isinstance(game, dict):
+            raise ValueError(f"Invalid game record in {path}.")
+        answer = game.get("answer")
+        attempts = game.get("attempts")
+        guesses = game.get("guesses")
+        if (
+            not isinstance(answer, str)
+            or isinstance(attempts, bool)
+            or not isinstance(attempts, int)
+            or attempts <= 0
+        ):
+            raise ValueError(f"Invalid answer or attempt count in {path}.")
+        if answer in attempts_by_answer:
+            raise ValueError(f"Duplicate answer {answer!r} in {path}.")
+        attempts_by_answer[answer] = attempts
+
+        if guesses is None:
+            if game_results.get("format_version") == 2:
+                raise ValueError(f"Missing guess sequence for {answer!r} in {path}.")
+            continue
+        if not isinstance(guesses, list) or len(guesses) != attempts:
+            raise ValueError(f"Invalid guess sequence for {answer!r} in {path}.")
+        normalized_guesses: list[dict[str, str]] = []
+        for step in guesses:
+            if (
+                not isinstance(step, dict)
+                or not isinstance(step.get("guess"), str)
+                or not isinstance(step.get("feedback"), str)
+                or len(step["feedback"]) != 5
+                or set(step["feedback"]) - {"P", "A", "V"}
+            ):
+                raise ValueError(f"Invalid guess step for {answer!r} in {path}.")
+            normalized_guesses.append(
+                {"guess": step["guess"], "feedback": step["feedback"]}
+            )
+        if (
+            normalized_guesses[-1]["guess"] != answer
+            or normalized_guesses[-1]["feedback"] != "VVVVV"
+        ):
+            raise ValueError(f"Guess sequence does not solve {answer!r} in {path}.")
+        guess_histories[answer] = normalized_guesses
+    return attempts_by_answer, guess_histories
+
+
+def _save_evaluation_json(
+    path: Path,
+    strategy: Strategy,
+    evaluation_key: str,
+    word_key: str,
+    selected_answers: list[str],
+    attempts_by_answer: dict[str, int],
+    guess_histories: dict[str, list[dict[str, str]]],
+    complete: bool,
+    summary: dict[str, int | float | dict[str, int]] | None = None,
+) -> Path:
+    game_results = {
+        "format_version": 2,
+        "strategy": strategy,
+        "word_list_key": word_key,
+        "evaluation_key": evaluation_key,
+        "search_settings": _search_settings(),
+        "complete": complete,
+        "completed_games": len(guess_histories),
+        "total_games": len(selected_answers),
+        "games": [
+            {
+                "answer": answer,
+                "attempts": attempts_by_answer[answer],
+                "guesses": guess_histories[answer],
+            }
+            for answer in selected_answers
+            if answer in attempts_by_answer and answer in guess_histories
+        ],
+    }
+    if summary is not None:
+        game_results["summary"] = summary
+
+    temporary_path: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            dir=path.parent,
+            prefix=f"{path.name}.",
+            suffix=".tmp",
+            delete=False,
+        ) as json_file:
+            temporary_path = Path(json_file.name)
+            json.dump(game_results, json_file, ensure_ascii=False, indent=2)
+            json_file.write("\n")
+        temporary_path.replace(path)
+    finally:
+        if temporary_path is not None and temporary_path.exists():
+            temporary_path.unlink()
+    return path
+
+
 def evaluate_solver(
     strategy: Strategy = "entropy",
     answers: Sequence[str] | None = None,
     resume: bool = True,
     checkpoint_interval: int = 100,
+    workers: int = 1,
 ) -> SolverEvaluation:
-    """Evaluate answers with resumable results and a shared feedback context."""
+    """Evaluate answers with resumable results and optional CPU processes."""
     strategy = _validate_strategy(strategy)
     if checkpoint_interval <= 0:
         raise ValueError("checkpoint_interval must be greater than zero.")
+    if workers <= 0:
+        raise ValueError("workers must be greater than zero.")
     all_answers = _load_answers()
     selected_answers = (
         all_answers
@@ -454,11 +735,53 @@ def evaluate_solver(
 
     context = _search_context(all_answers)
     evaluation_key = helpers.evaluation_scope_key(selected_answers)
+    json_output_path = _evaluation_json_path(
+        strategy,
+        evaluation_key,
+        context[3],
+    )
     attempts_by_answer = (
         helpers.load_evaluation_results(strategy, evaluation_key)
         if resume
         else {}
     )
+    saved_attempts, guess_histories = (
+        _load_evaluation_json(
+            json_output_path,
+            strategy,
+            evaluation_key,
+            context[3],
+        )
+        if resume
+        else ({}, {})
+    )
+    for answer, attempts in saved_attempts.items():
+        if answer not in selected_answers:
+            raise RuntimeError("The saved game JSON contains an unexpected answer.")
+        if answer in attempts_by_answer and attempts_by_answer[answer] != attempts:
+            raise RuntimeError(
+                f"Saved attempt counts disagree for answer {answer!r}."
+            )
+        attempts_by_answer.setdefault(answer, attempts)
+    for answer, guess_history in guess_histories.items():
+        if len(guess_history) != attempts_by_answer[answer]:
+            raise RuntimeError(
+                f"Saved guess sequence disagrees with the attempt count for {answer!r}."
+            )
+        answer_index = context[1][answer]
+        for step in guess_history:
+            guess_index = context[1].get(step["guess"])
+            if guess_index is None:
+                raise RuntimeError(
+                    f"Saved guess {step['guess']!r} is not in the vocabulary."
+                )
+            actual_feedback = _feedback_text(
+                int(context[2][guess_index, answer_index])
+            )
+            if step["feedback"] != actual_feedback:
+                raise RuntimeError(
+                    f"Saved feedback for {answer!r} does not match that answer."
+                )
     if (
         not set(attempts_by_answer).issubset(selected_answers)
         or any(attempts <= 0 for attempts in attempts_by_answer.values())
@@ -466,45 +789,148 @@ def evaluate_solver(
         raise RuntimeError("The persisted evaluation checkpoint is invalid.")
     if not resume:
         helpers.clear_evaluation_results(strategy, evaluation_key)
+        guess_histories.clear()
 
+    pending_answers = [
+        answer
+        for answer in selected_answers
+        if answer not in guess_histories
+    ]
+    pending_results: dict[str, int] = {}
     initial_guess_index: int | None = None
-    if strategy == "deep":
+    if pending_answers and strategy == "deep":
         initial_guess_index = choose_first_guess()[0]
 
-    pending_results: dict[str, int] = {}
-    for answer in selected_answers:
-        if answer in attempts_by_answer:
-            continue
-        attempts = _simulate_game_with_context(
-            answer,
-            all_answers,
-            strategy,
-            context,
-            initial_guess_index,
+    worker_count = min(workers, len(pending_answers)) if pending_answers else 0
+    if helpers._PROFILE is not None:
+        helpers._PROFILE.worker_processes = worker_count
+
+    _save_evaluation_json(
+        json_output_path,
+        strategy,
+        evaluation_key,
+        context[3],
+        selected_answers,
+        attempts_by_answer,
+        guess_histories,
+        complete=False,
+    )
+
+    if worker_count <= 1:
+        completed_batches = (
+            [
+                (
+                    answer,
+                    *_simulate_and_capture_game(
+                        answer,
+                        all_answers,
+                        strategy,
+                        context,
+                        initial_guess_index,
+                    ),
+                )
+                for answer in pending_answers[index:index + checkpoint_interval]
+            ]
+            for index in range(0, len(pending_answers), checkpoint_interval)
         )
-        if attempts <= 0:
-            raise RuntimeError("simulate_game returned a non-positive attempt count.")
-        attempts_by_answer[answer] = attempts
-        pending_results[answer] = attempts
-        if len(pending_results) >= checkpoint_interval:
+        for batch_results in completed_batches:
+            for answer, attempts, guess_history in batch_results:
+                if attempts <= 0:
+                    raise RuntimeError(
+                        "simulate_game returned a non-positive attempt count."
+                    )
+                attempts_by_answer[answer] = attempts
+                guess_histories[answer] = guess_history
+                pending_results[answer] = attempts
             helpers.save_evaluation_results(
                 strategy,
                 evaluation_key,
                 pending_results,
             )
             pending_results.clear()
+            _save_evaluation_json(
+                json_output_path,
+                strategy,
+                evaluation_key,
+                context[3],
+                selected_answers,
+                attempts_by_answer,
+                guess_histories,
+                complete=False,
+            )
             print(
                 f"Respostas avaliadas: {len(attempts_by_answer)}/"
                 f"{len(selected_answers)}"
             )
-    if pending_results:
-        helpers.save_evaluation_results(
-            strategy,
-            evaluation_key,
-            pending_results,
+    elif pending_answers:
+        worker_memo_base = partition_functions.DATASET_PATH.with_name(
+            "entropy_memo_worker.sqlite3"
         )
+        batch_size = max(1, checkpoint_interval // worker_count)
+        batches = [
+            pending_answers[index:index + batch_size]
+            for index in range(0, len(pending_answers), batch_size)
+        ]
+        completed_count = 0
+        with ProcessPoolExecutor(
+            max_workers=worker_count,
+            mp_context=multiprocessing.get_context("spawn"),
+            initializer=_initialize_evaluation_worker,
+            initargs=(
+                all_answers,
+                strategy,
+                partition_functions.DATASET_PATH,
+                worker_memo_base,
+                worker_count,
+                initial_guess_index,
+                helpers._PROFILE is not None,
+            ),
+        ) as executor:
+            for batch_results, worker_profile in executor.map(
+                _process_evaluation_batch,
+                batches,
+                chunksize=1,
+            ):
+                if helpers._PROFILE is not None and worker_profile is not None:
+                    _merge_worker_profile(helpers._PROFILE, worker_profile)
+                for answer, attempts, guess_history in batch_results:
+                    if attempts <= 0:
+                        raise RuntimeError(
+                            "simulate_game returned a non-positive attempt count."
+                        )
+                    attempts_by_answer[answer] = attempts
+                    guess_histories[answer] = guess_history
+                    pending_results[answer] = attempts
+                helpers.save_evaluation_results(
+                    strategy,
+                    evaluation_key,
+                    pending_results,
+                )
+                completed_count += len(pending_results)
+                pending_results.clear()
+                _save_evaluation_json(
+                    json_output_path,
+                    strategy,
+                    evaluation_key,
+                    context[3],
+                    selected_answers,
+                    attempts_by_answer,
+                    guess_histories,
+                    complete=False,
+                )
+                if (
+                    completed_count % checkpoint_interval == 0
+                    or completed_count == len(pending_answers)
+                ):
+                    print(
+                        f"Respostas avaliadas: {len(attempts_by_answer)}/"
+                        f"{len(selected_answers)}"
+                    )
 
-    if len(attempts_by_answer) != len(selected_answers):
+    if (
+        len(attempts_by_answer) != len(selected_answers)
+        or len(guess_histories) != len(selected_answers)
+    ):
         raise RuntimeError("The evaluation checkpoint is incomplete.")
 
     ordered_attempts = {
@@ -521,6 +947,26 @@ def evaluate_solver(
     wins_up_to_six = sum(
         attempts <= 6 for attempts in ordered_attempts.values()
     )
+    json_output_path = _save_evaluation_json(
+        json_output_path,
+        strategy,
+        evaluation_key,
+        context[3],
+        selected_answers,
+        ordered_attempts,
+        guess_histories,
+        complete=True,
+        summary={
+            "average_attempts": sum(ordered_attempts.values()) / len(selected_answers),
+            "worst_case": worst_case,
+            "win_rate_up_to_six": wins_up_to_six / len(selected_answers),
+            "distribution": {
+                str(attempts): count
+                for attempts, count in distribution.items()
+            },
+        },
+    )
+    print(f"Jogos salvos em: {json_output_path}")
     return SolverEvaluation(
         average_attempts=sum(ordered_attempts.values()) / len(selected_answers),
         worst_case=worst_case,
@@ -577,6 +1023,12 @@ def main(argv: Sequence[str] | None = None) -> None:
     evaluate_parser.add_argument("--seed", type=int, default=2026)
     evaluate_parser.add_argument("--checkpoint-interval", type=int, default=100)
     evaluate_parser.add_argument(
+        "--workers",
+        type=int,
+        default=1,
+        help="number of CPU worker processes used to evaluate answers",
+    )
+    evaluate_parser.add_argument(
         "--no-resume",
         action="store_true",
         help="discard saved answer results and evaluate the selected set again",
@@ -622,6 +1074,7 @@ def main(argv: Sequence[str] | None = None) -> None:
                     answers=evaluation_answers,
                     resume=not args.no_resume,
                     checkpoint_interval=args.checkpoint_interval,
+                    workers=args.workers,
                 )
             _print_profile(profile)
         else:
@@ -630,6 +1083,7 @@ def main(argv: Sequence[str] | None = None) -> None:
                 answers=evaluation_answers,
                 resume=not args.no_resume,
                 checkpoint_interval=args.checkpoint_interval,
+                workers=args.workers,
             )
         print(f"Games: {result.total_games}")
         print(f"Average guesses: {result.average_attempts:.3f}")

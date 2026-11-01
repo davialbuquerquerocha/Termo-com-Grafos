@@ -45,6 +45,7 @@ _SearchContext = tuple[
 
 @dataclass
 class SearchProfile:
+    worker_processes: int = 1
     states_computed: int = 0
     memo_hits: int = 0
     ranking_calls: int = 0
@@ -396,6 +397,7 @@ def clear_evaluation_results(strategy: str, evaluation_key: str) -> None:
 
 def search_profile_summary(profile: SearchProfile) -> dict[str, int | float | str | None]:
     return {
+        "worker_processes": profile.worker_processes,
         "states_computed": profile.states_computed,
         "memo_hits": profile.memo_hits,
         "ranking_calls": profile.ranking_calls,

@@ -1,3 +1,4 @@
 /dataset/entropy_memo.sqlite3
 /dataset/entropy_memo.sqlite3-shm
 /dataset/entropy_memo.sqlite3-wal
+/dataset/entropy_games_*.json
