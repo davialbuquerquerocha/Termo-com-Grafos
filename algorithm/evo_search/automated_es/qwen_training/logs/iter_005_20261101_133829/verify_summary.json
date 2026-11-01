@@ -1,0 +1,57 @@
+{
+  "words_evaluated": 10589,
+  "word_errors": 0,
+  "average": 5.046935,
+  "worst_word": "ginga",
+  "worst_attempts": 13,
+  "over_threshold": 1461,
+  "games_at_or_over_cap": 3153,
+  "attempts_histogram": {
+    "1": 1,
+    "2": 40,
+    "3": 864,
+    "4": 3336,
+    "5": 3195,
+    "6": 1692,
+    "7": 798,
+    "8": 396,
+    "9": 173,
+    "10": 59,
+    "11": 25,
+    "12": 8,
+    "13": 2
+  },
+  "max_guesses": 6,
+  "weights": [
+    -1.0,
+    -4.0,
+    11.0
+  ],
+  "mode": "evaluate",
+  "elapsed_seconds": 176.736,
+  "parameters": {
+    "max_iterations": 15,
+    "patience": 3,
+    "step_fraction": 0.15,
+    "rule_window": 10,
+    "rule_target": 0.5,
+    "rule_factor": 1.2,
+    "min_step_fraction": 0.001,
+    "grid_search": true,
+    "grid_offsets": [
+      -5,
+      -2,
+      2,
+      5
+    ],
+    "seed": 100001,
+    "max_guesses": 6,
+    "fail_penalty": 5.0,
+    "parallel_workers": 17,
+    "sim_words": 500,
+    "sim_words_effective": 10589,
+    "sim_seed": 100001,
+    "source_words_file": "/home/fernando/Documents/Termo-com-Grafos/algorithm/evo_search/termo-evo.qwen2/dataset/termo_palavras_aceitas.txt",
+    "dataset_dir": "/home/fernando/Documents/Termo-com-Grafos/algorithm/evo_search/termo-evo.qwen2/dataset"
+  }
+}

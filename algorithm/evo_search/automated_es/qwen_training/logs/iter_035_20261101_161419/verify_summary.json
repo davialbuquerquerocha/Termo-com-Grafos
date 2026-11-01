@@ -1,0 +1,54 @@
+{
+  "words_evaluated": 10589,
+  "word_errors": 0,
+  "average": 4.643592,
+  "worst_word": "zimbo",
+  "worst_attempts": 11,
+  "over_threshold": 495,
+  "games_at_or_over_cap": 1897,
+  "attempts_histogram": {
+    "1": 1,
+    "2": 40,
+    "3": 1018,
+    "4": 4174,
+    "5": 3459,
+    "6": 1402,
+    "7": 368,
+    "8": 93,
+    "9": 28,
+    "10": 5,
+    "11": 1
+  },
+  "max_guesses": 6,
+  "weights": [
+    7.730457948621313,
+    -3.287924469827101,
+    44.52047416663182
+  ],
+  "mode": "evaluate",
+  "elapsed_seconds": 164.88,
+  "parameters": {
+    "max_iterations": 20,
+    "patience": 15,
+    "step_fraction": 0.95,
+    "rule_window": 12,
+    "rule_target": 0.001,
+    "rule_factor": 5.0,
+    "min_step_fraction": 0.001,
+    "grid_search": false,
+    "grid_offsets": [
+      -2,
+      0,
+      2
+    ],
+    "seed": 100002,
+    "max_guesses": 6,
+    "fail_penalty": 5.0,
+    "parallel_workers": 17,
+    "sim_words": 300,
+    "sim_words_effective": 10589,
+    "sim_seed": 100003,
+    "source_words_file": "/home/fernando/Documents/Termo-com-Grafos/algorithm/evo_search/termo-evo.qwen2/dataset/termo_palavras_aceitas.txt",
+    "dataset_dir": "/home/fernando/Documents/Termo-com-Grafos/algorithm/evo_search/termo-evo.qwen2/dataset"
+  }
+}

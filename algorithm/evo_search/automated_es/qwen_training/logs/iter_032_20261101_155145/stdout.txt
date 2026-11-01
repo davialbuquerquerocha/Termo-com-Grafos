@@ -1,0 +1,64 @@
+parameters: /home/fernando/Documents/Termo-com-Grafos/algorithm/evo_search/termo-evo.qwen2/qwen_training/logs/iter_032_20261101_155145/parameters_used.conf
+start: average guesses = 3.0900  worst=amial(5)  >6 guesses: 0
+grid best: 3.0900 with weights [7.730457948621313, -3.287924469827101, 44.52047416663182]  worst=amial(5)  >6 guesses: 0
+iter  10  best=3.0900  last=3.2200  worst=amial(5)  >6 guesses: 0  w=[7.7305, -3.2879, 44.5205]
+no improvement in 10 proposals - stopping
+saved best weights [7.7305, -3.2879, 44.5205] (average guesses 3.0900)  worst=amial(5)  >6 guesses: 0
+{
+  "words_evaluated": 300,
+  "word_errors": 0,
+  "average": 3.09,
+  "worst_word": "amial",
+  "worst_attempts": 5,
+  "over_threshold": 0,
+  "games_at_or_over_cap": 0,
+  "attempts_histogram": {
+    "1": 1,
+    "2": 49,
+    "3": 178,
+    "4": 66,
+    "5": 6
+  },
+  "max_guesses": 6,
+  "weights": [
+    7.730457948621313,
+    -3.287924469827101,
+    44.52047416663182
+  ],
+  "mode": "train",
+  "elapsed_seconds": 118.71,
+  "iterations_run": 10,
+  "start_average": 3.09,
+  "start_over_threshold": 0,
+  "start_worst_attempts": 5,
+  "parameters": {
+    "max_iterations": 15,
+    "patience": 10,
+    "step_fraction": 0.95,
+    "rule_window": 4,
+    "rule_target": 0.003,
+    "rule_factor": 3.0,
+    "min_step_fraction": 0.001,
+    "grid_search": true,
+    "grid_offsets": [
+      -10,
+      -6,
+      -3,
+      -1,
+      1,
+      3,
+      6,
+      10
+    ],
+    "seed": 100002,
+    "max_guesses": 6,
+    "fail_penalty": 5.0,
+    "parallel_workers": 17,
+    "sim_words": 300,
+    "sim_words_effective": 300,
+    "sim_seed": 100003,
+    "source_words_file": "/home/fernando/Documents/Termo-com-Grafos/algorithm/evo_search/termo-evo.qwen2/dataset/termo_palavras_aceitas.txt",
+    "dataset_dir": "/home/fernando/Documents/Termo-com-Grafos/algorithm/evo_search/termo-evo.qwen2/dataset"
+  }
+}
+summary written to /home/fernando/Documents/Termo-com-Grafos/algorithm/evo_search/termo-evo.qwen2/qwen_training/logs/iter_032_20261101_155145/summary.json

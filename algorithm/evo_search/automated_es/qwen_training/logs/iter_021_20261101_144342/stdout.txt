@@ -1,0 +1,59 @@
+parameters: /home/fernando/Documents/Termo-com-Grafos/algorithm/evo_search/termo-evo.qwen2/qwen_training/logs/iter_021_20261101_144342/parameters_used.conf
+start: average guesses = 3.5480  worst=miojo(6)  >6 guesses: 0
+grid best: 3.5450 with weights [15.843292317311434, 5.657776183650278, 33.31359576024953]  worst=miojo(6)  >6 guesses: 0
+no improvement in 5 proposals - stopping
+saved best weights [15.8433, 5.6578, 33.3136] (average guesses 3.5450)  worst=miojo(6)  >6 guesses: 0
+{
+  "words_evaluated": 1000,
+  "word_errors": 0,
+  "average": 3.545,
+  "worst_word": "miojo",
+  "worst_attempts": 6,
+  "over_threshold": 0,
+  "games_at_or_over_cap": 2,
+  "attempts_histogram": {
+    "1": 1,
+    "2": 50,
+    "3": 428,
+    "4": 447,
+    "5": 72,
+    "6": 2
+  },
+  "max_guesses": 6,
+  "weights": [
+    15.843292317311434,
+    5.657776183650278,
+    33.31359576024953
+  ],
+  "mode": "train",
+  "elapsed_seconds": 61.165,
+  "iterations_run": 5,
+  "start_average": 3.548,
+  "start_over_threshold": 0,
+  "start_worst_attempts": 6,
+  "parameters": {
+    "max_iterations": 10,
+    "patience": 5,
+    "step_fraction": 0.75,
+    "rule_window": 5,
+    "rule_target": 0.5,
+    "rule_factor": 5.0,
+    "min_step_fraction": 0.001,
+    "grid_search": true,
+    "grid_offsets": [
+      -5,
+      0,
+      5
+    ],
+    "seed": 100001,
+    "max_guesses": 6,
+    "fail_penalty": 5.0,
+    "parallel_workers": 17,
+    "sim_words": 1000,
+    "sim_words_effective": 1000,
+    "sim_seed": 100003,
+    "source_words_file": "/home/fernando/Documents/Termo-com-Grafos/algorithm/evo_search/termo-evo.qwen2/dataset/termo_palavras_aceitas.txt",
+    "dataset_dir": "/home/fernando/Documents/Termo-com-Grafos/algorithm/evo_search/termo-evo.qwen2/dataset"
+  }
+}
+summary written to /home/fernando/Documents/Termo-com-Grafos/algorithm/evo_search/termo-evo.qwen2/qwen_training/logs/iter_021_20261101_144342/summary.json

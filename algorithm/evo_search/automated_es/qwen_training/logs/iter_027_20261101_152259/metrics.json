@@ -1,0 +1,39 @@
+{
+  "iteration": 27,
+  "timestamp": "20261101_152808",
+  "llm_status": "ok",
+  "params_changed": true,
+  "run_skipped": false,
+  "exit_code": 0,
+  "timed_out": false,
+  "elapsed_seconds": 4.09,
+  "sim_words_effective": 300,
+  "metrics": {
+    "average": 3.113333,
+    "worst_word": "marim",
+    "worst_attempts": 6,
+    "over_threshold": 0,
+    "games_at_or_over_cap": 1,
+    "max_guesses": 6,
+    "words_evaluated": 300,
+    "word_errors": 0,
+    "attempts_histogram": {
+      "1": 1,
+      "2": 49,
+      "3": 175,
+      "4": 66,
+      "5": 8,
+      "6": 1
+    },
+    "weights": [
+      11.432933489585245,
+      3.2158924688373594,
+      38.26058331902591
+    ],
+    "iterations_run": 15
+  },
+  "stop_candidate": true,
+  "verified_stop": false,
+  "regression_guard": "",
+  "note": "your success claim FAILED verification on the full list - the sample was too easy; keep improving with bigger samples or better parameters"
+}

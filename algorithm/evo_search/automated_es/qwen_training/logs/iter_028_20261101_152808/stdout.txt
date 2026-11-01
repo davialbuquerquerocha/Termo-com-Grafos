@@ -1,0 +1,57 @@
+parameters: /home/fernando/Documents/Termo-com-Grafos/algorithm/evo_search/termo-evo.qwen2/qwen_training/logs/iter_028_20261101_152808/parameters_used.conf
+start: average guesses = 3.1133  worst=marim(6)  >6 guesses: 0
+iter   3  best=3.1067  last=3.1067  worst=amial(5)  >6 guesses: 0  w=[7.1425, -7.9648, 42.4465]
+iter   9  best=3.1000  last=3.1000  worst=amial(5)  >6 guesses: 0  w=[7.67, -3.7686, 44.3073]
+iter  10  best=3.1000  last=3.2200  worst=amial(5)  >6 guesses: 0  w=[7.67, -3.7686, 44.3073]
+saved best weights [7.67, -3.7686, 44.3073] (average guesses 3.1000)  worst=amial(5)  >6 guesses: 0
+{
+  "words_evaluated": 300,
+  "word_errors": 0,
+  "average": 3.1,
+  "worst_word": "amial",
+  "worst_attempts": 5,
+  "over_threshold": 0,
+  "games_at_or_over_cap": 0,
+  "attempts_histogram": {
+    "1": 1,
+    "2": 49,
+    "3": 175,
+    "4": 69,
+    "5": 6
+  },
+  "max_guesses": 6,
+  "weights": [
+    7.670034769046474,
+    -3.768557225758446,
+    44.307337382744564
+  ],
+  "mode": "train",
+  "elapsed_seconds": 3.836,
+  "iterations_run": 15,
+  "start_average": 3.1133333333333333,
+  "start_over_threshold": 0,
+  "start_worst_attempts": 6,
+  "parameters": {
+    "max_iterations": 15,
+    "patience": 8,
+    "step_fraction": 0.95,
+    "rule_window": 2,
+    "rule_target": 0.01,
+    "rule_factor": 3.0,
+    "min_step_fraction": 0.001,
+    "grid_search": false,
+    "grid_offsets": [
+      0
+    ],
+    "seed": 100002,
+    "max_guesses": 6,
+    "fail_penalty": 5.0,
+    "parallel_workers": 17,
+    "sim_words": 300,
+    "sim_words_effective": 300,
+    "sim_seed": 100003,
+    "source_words_file": "/home/fernando/Documents/Termo-com-Grafos/algorithm/evo_search/termo-evo.qwen2/dataset/termo_palavras_aceitas.txt",
+    "dataset_dir": "/home/fernando/Documents/Termo-com-Grafos/algorithm/evo_search/termo-evo.qwen2/dataset"
+  }
+}
+summary written to /home/fernando/Documents/Termo-com-Grafos/algorithm/evo_search/termo-evo.qwen2/qwen_training/logs/iter_028_20261101_152808/summary.json

@@ -1,0 +1,54 @@
+{
+  "words_evaluated": 1000,
+  "word_errors": 0,
+  "average": 3.593,
+  "worst_word": "acaja",
+  "worst_attempts": 6,
+  "over_threshold": 0,
+  "games_at_or_over_cap": 8,
+  "attempts_histogram": {
+    "1": 1,
+    "2": 46,
+    "3": 411,
+    "4": 451,
+    "5": 83,
+    "6": 8
+  },
+  "max_guesses": 6,
+  "weights": [
+    0.8432923173114335,
+    0.6577761836502781,
+    8.313595760249525
+  ],
+  "mode": "train",
+  "elapsed_seconds": 13.218,
+  "iterations_run": 6,
+  "start_average": 3.63,
+  "start_over_threshold": 0,
+  "start_worst_attempts": 6,
+  "parameters": {
+    "max_iterations": 30,
+    "patience": 5,
+    "step_fraction": 0.25,
+    "rule_window": 5,
+    "rule_target": 0.2,
+    "rule_factor": 3.0,
+    "min_step_fraction": 0.001,
+    "grid_search": false,
+    "grid_offsets": [
+      -15,
+      -10,
+      10,
+      15
+    ],
+    "seed": 100001,
+    "max_guesses": 6,
+    "fail_penalty": 5.0,
+    "parallel_workers": 17,
+    "sim_words": 1000,
+    "sim_words_effective": 1000,
+    "sim_seed": 100003,
+    "source_words_file": "/home/fernando/Documents/Termo-com-Grafos/algorithm/evo_search/termo-evo.qwen2/dataset/termo_palavras_aceitas.txt",
+    "dataset_dir": "/home/fernando/Documents/Termo-com-Grafos/algorithm/evo_search/termo-evo.qwen2/dataset"
+  }
+}

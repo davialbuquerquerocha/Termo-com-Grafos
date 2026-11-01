@@ -1,0 +1,53 @@
+parameters: /home/fernando/Documents/Termo-com-Grafos/algorithm/evo_search/termo-evo.qwen2/qwen_training/logs/iter_028_20261101_152808/parameters_used.conf
+{
+  "words_evaluated": 10589,
+  "word_errors": 0,
+  "average": 4.63736,
+  "worst_word": "gagao",
+  "worst_attempts": 10,
+  "over_threshold": 554,
+  "games_at_or_over_cap": 2004,
+  "attempts_histogram": {
+    "1": 1,
+    "2": 62,
+    "3": 1193,
+    "4": 3976,
+    "5": 3353,
+    "6": 1450,
+    "7": 417,
+    "8": 121,
+    "9": 15,
+    "10": 1
+  },
+  "max_guesses": 6,
+  "weights": [
+    7.670034769046474,
+    -3.768557225758446,
+    44.307337382744564
+  ],
+  "mode": "evaluate",
+  "elapsed_seconds": 166.61,
+  "parameters": {
+    "max_iterations": 15,
+    "patience": 8,
+    "step_fraction": 0.95,
+    "rule_window": 2,
+    "rule_target": 0.01,
+    "rule_factor": 3.0,
+    "min_step_fraction": 0.001,
+    "grid_search": false,
+    "grid_offsets": [
+      0
+    ],
+    "seed": 100002,
+    "max_guesses": 6,
+    "fail_penalty": 5.0,
+    "parallel_workers": 17,
+    "sim_words": 300,
+    "sim_words_effective": 10589,
+    "sim_seed": 100003,
+    "source_words_file": "/home/fernando/Documents/Termo-com-Grafos/algorithm/evo_search/termo-evo.qwen2/dataset/termo_palavras_aceitas.txt",
+    "dataset_dir": "/home/fernando/Documents/Termo-com-Grafos/algorithm/evo_search/termo-evo.qwen2/dataset"
+  }
+}
+summary written to /home/fernando/Documents/Termo-com-Grafos/algorithm/evo_search/termo-evo.qwen2/qwen_training/logs/iter_028_20261101_152808/verify_summary.json
