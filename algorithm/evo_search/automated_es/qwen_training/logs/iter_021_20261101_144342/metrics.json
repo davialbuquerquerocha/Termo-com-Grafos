@@ -1,0 +1,39 @@
+{
+  "iteration": 21,
+  "timestamp": "20261101_145043",
+  "llm_status": "ok",
+  "params_changed": true,
+  "run_skipped": false,
+  "exit_code": 0,
+  "timed_out": false,
+  "elapsed_seconds": 63.08,
+  "sim_words_effective": 1000,
+  "metrics": {
+    "average": 3.545,
+    "worst_word": "miojo",
+    "worst_attempts": 6,
+    "over_threshold": 0,
+    "games_at_or_over_cap": 2,
+    "max_guesses": 6,
+    "words_evaluated": 1000,
+    "word_errors": 0,
+    "attempts_histogram": {
+      "1": 1,
+      "2": 50,
+      "3": 428,
+      "4": 447,
+      "5": 72,
+      "6": 2
+    },
+    "weights": [
+      15.843292317311434,
+      5.657776183650278,
+      33.31359576024953
+    ],
+    "iterations_run": 5
+  },
+  "stop_candidate": true,
+  "verified_stop": false,
+  "regression_guard": "",
+  "note": "your success claim FAILED verification on the full list - the sample was too easy; keep improving with bigger samples or better parameters"
+}

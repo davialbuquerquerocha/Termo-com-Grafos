@@ -1,0 +1,51 @@
+{
+  "words_evaluated": 300,
+  "word_errors": 0,
+  "average": 3.113333,
+  "worst_word": "marim",
+  "worst_attempts": 6,
+  "over_threshold": 0,
+  "games_at_or_over_cap": 1,
+  "attempts_histogram": {
+    "1": 1,
+    "2": 49,
+    "3": 175,
+    "4": 66,
+    "5": 8,
+    "6": 1
+  },
+  "max_guesses": 6,
+  "weights": [
+    11.432933489585245,
+    3.2158924688373594,
+    38.26058331902591
+  ],
+  "mode": "train",
+  "elapsed_seconds": 3.671,
+  "iterations_run": 15,
+  "start_average": 3.14,
+  "start_over_threshold": 0,
+  "start_worst_attempts": 5,
+  "parameters": {
+    "max_iterations": 15,
+    "patience": 8,
+    "step_fraction": 0.95,
+    "rule_window": 2,
+    "rule_target": 0.02,
+    "rule_factor": 2.5,
+    "min_step_fraction": 0.001,
+    "grid_search": false,
+    "grid_offsets": [
+      0
+    ],
+    "seed": 100002,
+    "max_guesses": 6,
+    "fail_penalty": 5.0,
+    "parallel_workers": 17,
+    "sim_words": 300,
+    "sim_words_effective": 300,
+    "sim_seed": 100003,
+    "source_words_file": "/home/fernando/Documents/Termo-com-Grafos/algorithm/evo_search/termo-evo.qwen2/dataset/termo_palavras_aceitas.txt",
+    "dataset_dir": "/home/fernando/Documents/Termo-com-Grafos/algorithm/evo_search/termo-evo.qwen2/dataset"
+  }
+}

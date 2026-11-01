@@ -1,0 +1,6 @@
+iteration,best_grade,candidate_grade,best_worst_word,best_worst_attempts,best_over_threshold,candidate_worst_word,candidate_worst_attempts,candidate_over_threshold,w0,w1,w2
+1,10.235000,10.547500,zungu,754,486,zende,658,515,-6.0,-5.0,3.0
+2,10.235000,8.132000,zungu,754,486,zende,657,494,-6.0,-5.0,3.0
+3,10.235000,12.081500,zungu,754,486,zungu,754,505,-6.0,-5.0,3.0
+4,10.235000,10.555000,zungu,754,486,zende,658,516,-6.0,-5.0,3.0
+5,10.235000,10.551500,zungu,754,486,zende,658,523,-6.0,-5.0,3.0

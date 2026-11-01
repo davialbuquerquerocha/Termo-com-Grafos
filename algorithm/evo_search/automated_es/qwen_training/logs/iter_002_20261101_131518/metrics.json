@@ -1,0 +1,51 @@
+{
+  "iteration": 2,
+  "timestamp": "20261101_133318",
+  "llm_status": "ok",
+  "params_changed": true,
+  "run_skipped": false,
+  "exit_code": 0,
+  "timed_out": false,
+  "elapsed_seconds": 997.45,
+  "sim_words_effective": 2000,
+  "metrics": {
+    "average": 4.7035,
+    "worst_word": "vaixa",
+    "worst_attempts": 197,
+    "over_threshold": 75,
+    "games_at_or_over_cap": 211,
+    "max_guesses": 6,
+    "words_evaluated": 2000,
+    "word_errors": 0,
+    "attempts_histogram": {
+      "1": 1,
+      "2": 67,
+      "3": 518,
+      "4": 789,
+      "5": 414,
+      "6": 136,
+      "7": 45,
+      "8": 14,
+      "9": 2,
+      "10": 3,
+      "11": 1,
+      "60": 2,
+      "61": 1,
+      "78": 2,
+      "79": 1,
+      "185": 1,
+      "196": 2,
+      "197": 1
+    },
+    "weights": [
+      -3.0,
+      -6.0,
+      6.0
+    ],
+    "iterations_run": 5
+  },
+  "stop_candidate": false,
+  "verified_stop": false,
+  "regression_guard": "",
+  "note": ""
+}

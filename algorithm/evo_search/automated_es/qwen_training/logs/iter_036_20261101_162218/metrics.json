@@ -1,0 +1,38 @@
+{
+  "iteration": 36,
+  "timestamp": "20261101_162516",
+  "llm_status": "ok (strategy block missing - previous kept)",
+  "params_changed": false,
+  "run_skipped": true,
+  "exit_code": null,
+  "timed_out": false,
+  "elapsed_seconds": 0,
+  "sim_words_effective": 300,
+  "metrics": {
+    "average": 3.09,
+    "worst_word": "amial",
+    "worst_attempts": 5,
+    "over_threshold": 0,
+    "games_at_or_over_cap": 0,
+    "max_guesses": 6,
+    "words_evaluated": 300,
+    "word_errors": 0,
+    "attempts_histogram": {
+      "1": 1,
+      "2": 49,
+      "3": 178,
+      "4": 66,
+      "5": 6
+    },
+    "weights": [
+      7.730457948621313,
+      -3.287924469827101,
+      44.52047416663182
+    ],
+    "iterations_run": 15
+  },
+  "stop_candidate": false,
+  "verified_stop": false,
+  "regression_guard": "",
+  "note": "your reply had no strategy block; the previous AGENT_STRATEGY.md was kept; run skipped: your parameters are identical to the last run (time is a cost) - change something to trigger a new simulation"
+}

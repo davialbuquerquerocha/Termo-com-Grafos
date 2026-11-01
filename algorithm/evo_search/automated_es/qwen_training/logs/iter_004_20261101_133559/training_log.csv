@@ -1,0 +1,4 @@
+iteration,best_grade,candidate_grade,best_worst_word,best_worst_attempts,best_over_threshold,candidate_worst_word,candidate_worst_attempts,candidate_over_threshold,w0,w1,w2
+1,4.703500,8.259000,vaixa,197,75,zende,658,238,-3.0,-6.0,6.0
+2,4.703500,8.020500,vaixa,197,75,zende,658,197,-3.0,-6.0,6.0
+3,4.703500,5.369000,vaixa,197,75,zende,657,94,-3.0,-6.0,6.0

@@ -1,0 +1,38 @@
+{
+  "iteration": 24,
+  "timestamp": "20261101_150734",
+  "llm_status": "ok",
+  "params_changed": true,
+  "run_skipped": false,
+  "exit_code": 0,
+  "timed_out": false,
+  "elapsed_seconds": 71.56,
+  "sim_words_effective": 500,
+  "metrics": {
+    "average": 3.208,
+    "worst_word": "azote",
+    "worst_attempts": 5,
+    "over_threshold": 0,
+    "games_at_or_over_cap": 0,
+    "max_guesses": 6,
+    "words_evaluated": 500,
+    "word_errors": 0,
+    "attempts_histogram": {
+      "1": 1,
+      "2": 55,
+      "3": 291,
+      "4": 145,
+      "5": 8
+    },
+    "weights": [
+      18.843292317311434,
+      8.657776183650277,
+      39.31359576024953
+    ],
+    "iterations_run": 8
+  },
+  "stop_candidate": true,
+  "verified_stop": false,
+  "regression_guard": "",
+  "note": "your success claim FAILED verification on the full list - the sample was too easy; keep improving with bigger samples or better parameters"
+}

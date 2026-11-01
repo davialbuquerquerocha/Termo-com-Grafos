@@ -1,0 +1,40 @@
+{
+  "iteration": 11,
+  "timestamp": "20261101_135448",
+  "llm_status": "ok",
+  "params_changed": true,
+  "run_skipped": false,
+  "exit_code": 0,
+  "timed_out": false,
+  "elapsed_seconds": 32.66,
+  "sim_words_effective": 2000,
+  "metrics": {
+    "average": 3.913,
+    "worst_word": "exina",
+    "worst_attempts": 7,
+    "over_threshold": 10,
+    "games_at_or_over_cap": 91,
+    "max_guesses": 6,
+    "words_evaluated": 2000,
+    "word_errors": 0,
+    "attempts_histogram": {
+      "1": 1,
+      "2": 52,
+      "3": 622,
+      "4": 871,
+      "5": 363,
+      "6": 81,
+      "7": 10
+    },
+    "weights": [
+      -1.9564289653026583,
+      -1.2684712622829064,
+      11.498993376063998
+    ],
+    "iterations_run": 1
+  },
+  "stop_candidate": false,
+  "verified_stop": false,
+  "regression_guard": "",
+  "note": ""
+}

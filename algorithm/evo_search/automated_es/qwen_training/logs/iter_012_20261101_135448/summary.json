@@ -1,0 +1,56 @@
+{
+  "words_evaluated": 2000,
+  "word_errors": 0,
+  "average": 3.9445,
+  "worst_word": "atare",
+  "worst_attempts": 10,
+  "over_threshold": 35,
+  "games_at_or_over_cap": 118,
+  "attempts_histogram": {
+    "1": 1,
+    "2": 58,
+    "3": 623,
+    "4": 857,
+    "5": 343,
+    "6": 83,
+    "7": 24,
+    "8": 6,
+    "9": 4,
+    "10": 1
+  },
+  "max_guesses": 6,
+  "weights": [
+    -1.9564289653026583,
+    -1.2684712622829064,
+    11.498993376063998
+  ],
+  "mode": "train",
+  "elapsed_seconds": 52.156,
+  "iterations_run": 3,
+  "start_average": 3.9445,
+  "start_over_threshold": 35,
+  "start_worst_attempts": 10,
+  "parameters": {
+    "max_iterations": 15,
+    "patience": 3,
+    "step_fraction": 1.0,
+    "rule_window": 10,
+    "rule_target": 0.5,
+    "rule_factor": 2.0,
+    "min_step_fraction": 0.001,
+    "grid_search": false,
+    "grid_offsets": [
+      -3,
+      3
+    ],
+    "seed": 100001,
+    "max_guesses": 6,
+    "fail_penalty": 5.0,
+    "parallel_workers": 17,
+    "sim_words": 2000,
+    "sim_words_effective": 2000,
+    "sim_seed": 100002,
+    "source_words_file": "/home/fernando/Documents/Termo-com-Grafos/algorithm/evo_search/termo-evo.qwen2/dataset/termo_palavras_aceitas.txt",
+    "dataset_dir": "/home/fernando/Documents/Termo-com-Grafos/algorithm/evo_search/termo-evo.qwen2/dataset"
+  }
+}

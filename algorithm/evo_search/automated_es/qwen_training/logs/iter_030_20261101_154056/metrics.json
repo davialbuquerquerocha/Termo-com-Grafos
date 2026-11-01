@@ -1,0 +1,38 @@
+{
+  "iteration": 30,
+  "timestamp": "20261101_154611",
+  "llm_status": "ok",
+  "params_changed": true,
+  "run_skipped": false,
+  "exit_code": 0,
+  "timed_out": false,
+  "elapsed_seconds": 4.22,
+  "sim_words_effective": 300,
+  "metrics": {
+    "average": 3.09,
+    "worst_word": "amial",
+    "worst_attempts": 5,
+    "over_threshold": 0,
+    "games_at_or_over_cap": 0,
+    "max_guesses": 6,
+    "words_evaluated": 300,
+    "word_errors": 0,
+    "attempts_histogram": {
+      "1": 1,
+      "2": 49,
+      "3": 178,
+      "4": 66,
+      "5": 6
+    },
+    "weights": [
+      7.730457948621313,
+      -3.287924469827101,
+      44.52047416663182
+    ],
+    "iterations_run": 15
+  },
+  "stop_candidate": true,
+  "verified_stop": false,
+  "regression_guard": "",
+  "note": "your success claim FAILED verification on the full list - the sample was too easy; keep improving with bigger samples or better parameters"
+}
