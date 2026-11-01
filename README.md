@@ -5,8 +5,8 @@ respostas possíveis quanto como conjunto de palpites. A lista separada de
 soluções não é usada.
 
 O algoritmo de partição escolhe palpites pela qualidade das partições de feedback
-e pré-calcula uma matriz NumPy. O arquivo `.npy` é armazenado em
-`%LOCALAPPDATA%\Termo` e reutilizado enquanto a lista de palavras não mudar.
+e pré-calcula uma matriz NumPy. O arquivo `.npy` é armazenado em `dataset/` e
+reutilizado enquanto a lista de palavras não mudar.
 Instale a dependência com `pip install -r requirements.txt`.
 
 Execute os testes com `python -m unittest discover -s tests -v`. A simulação de
@@ -27,7 +27,8 @@ Os solvers ficam organizados em pacotes separados:
 - `algorithm/inclusive/algorithm.py` contém o solver inclusivo e
   `algorithm/inclusive/functions.py` contém seus filtros e heurísticas.
 - `algorithm/partition/algorithm.py` contém o solver por partições e
-  `algorithm/partition/functions.py` mantém os filtros exclusivos legados.
+  `algorithm/partition/functions.py` contém os auxiliares de matriz/partição e
+  os filtros exclusivos legados.
 - `algorithm/functions.py` reúne tipos, utilitários de listas e restrições
   genéricas de feedback compartilhadas. A pontuação continua em
   `algorithm/termo_implementation.py`.

@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 
 from algorithm.partition import algorithm as partition
+from algorithm.partition import functions as partition_functions
 from algorithm import functions as f
 
 DATASET_DIR = Path(__file__).resolve().parent / "dataset"
@@ -23,8 +24,8 @@ def _initialize_worker(
 ) -> None:
     global _WORKER_WORD_LIST
     _WORKER_WORD_LIST = word_list
-    partition._get_feedback_matrix(word_list)
-    partition.install_bounded_guess_overrides(bounded_overrides)
+    partition_functions._get_feedback_matrix(word_list)
+    partition_functions.install_bounded_guess_overrides(bounded_overrides)
 
 
 def run_algorithm_and_check(
@@ -93,7 +94,7 @@ def run_all_answers(
             )
         return 0, 0
 
-    bounded_overrides, override_report = partition.prepare_bounded_guess_overrides(
+    bounded_overrides, override_report = partition_functions.prepare_bounded_guess_overrides(
         word_list,
         max_attempts=6,
     )

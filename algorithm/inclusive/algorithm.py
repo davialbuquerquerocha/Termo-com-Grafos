@@ -4,10 +4,8 @@ from collections.abc import Callable
 
 from algorithm import functions as f
 from algorithm import termo_implementation as t
-from . import functions as strategy_functions
 
-FilterFunction = Callable[[list[str], f.Feedback], list[str]]
-ExactFilterFunction = Callable[[list[str], str, f.Feedback], list[str]]
+FilterFunction = Callable[[list[str], str, f.Feedback], list[str]]
 WordFunction = Callable[[list[str]], str]
 
 
@@ -18,7 +16,6 @@ def algorithm_step(
     filter_function: FilterFunction,
     show_progress: bool = True,
     accepted_words: set[str] | None = None,
-    exact_filter: ExactFilterFunction | None = None,
 ) -> list[str]:
     """Run one guess and retain answers consistent with its feedback."""
     guess = word_function(word_list)
@@ -35,10 +32,7 @@ def algorithm_step(
         guess,
         accepted_words if accepted_words is not None else set(word_list),
     )
-    if exact_filter is not None:
-        word_list = exact_filter(word_list, guess, feedback)
-    else:
-        word_list = filter_function(word_list, feedback)
+    word_list = filter_function(word_list, guess, feedback)
     if not word_list:
         raise RuntimeError(
             "Nenhuma palavra candidata restou após o feedback. "
@@ -73,10 +67,9 @@ def inclusive_algorithm(
             word_list,
             answer,
             word_function,
-            strategy_functions.inclusive_filter_by_feedback,
+            f.filter_words_by_feedback,
             show_progress,
             accepted_words,
-            strategy_functions.consistent_filter,
         )
         count += 1
     return count

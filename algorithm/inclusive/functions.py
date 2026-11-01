@@ -1,10 +1,4 @@
-"""Heuristics and feedback filters specific to the inclusive solver."""
-
-from algorithm import functions as common
-from algorithm.termo_implementation import score_guess
-
-Feedback = common.Feedback
-
+"""Heuristics specific to the inclusive solver."""
 
 def letter_count(word_list: list[str]) -> dict[tuple[str, int], int]:
     """Count each letter at each position in a set of candidate words."""
@@ -81,7 +75,7 @@ def find_best_word_by_letter_frequency(
         raise ValueError("Cannot find a best word in an empty word list.")
     position_counts = letter_count(word_list)
     letter_counts: dict[str, int] = {}
-    for (letter, _position), count in position_counts.items():
+    for (letter, _), count in position_counts.items():
         letter_counts[letter] = letter_counts.get(letter, 0) + count
     candidates = [word.upper() for word in word_list if len(word) == 5]
     if not allow_repeated_letters:
@@ -96,37 +90,3 @@ def find_best_word_by_letter_frequency(
         candidates,
         key=lambda word: sum(letter_counts[letter] for letter in word),
     )
-
-
-def inclusive_filter_by_feedback(
-    word_list: list[str],
-    feedback: Feedback,
-) -> list[str]:
-    """Apply the legacy black/yellow/green filters to feedback."""
-    black_positions, yellow_positions, green_positions = feedback
-    filtered_words = common.black_letter(
-        word_list,
-        black_positions,
-        yellow_positions,
-        green_positions,
-    )
-    filtered_words = common.yellow_letter(
-        filtered_words,
-        yellow_positions,
-        green_positions,
-    )
-    return common.green_letter(filtered_words, green_positions)
-
-
-def consistent_filter(
-    word_list: list[str],
-    guess: str,
-    feedback: Feedback,
-) -> list[str]:
-    """Keep only words whose exact Wordle score matches the feedback."""
-    normalized_guess = guess.strip().upper()
-    return [
-        word
-        for word in word_list
-        if score_guess(word.strip().upper(), normalized_guess) == feedback
-    ]

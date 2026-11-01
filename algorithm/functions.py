@@ -1,6 +1,10 @@
 """Shared word-list utilities and reusable feedback constraints."""
 
-Feedback = tuple[
+from typing import TypeAlias
+
+from algorithm.termo_implementation import score_guess
+
+Feedback: TypeAlias = tuple[
     list[tuple[str, int]],
     list[tuple[str, int]],
     list[tuple[str, int]],
@@ -38,6 +42,20 @@ def count_words(word_list: list[str]) -> int:
     return len(word_list)
 
 
+def filter_words_by_feedback(
+    word_list: list[str],
+    guess: str,
+    feedback: Feedback,
+) -> list[str]:
+    """Keep words whose exact score for ``guess`` matches ``feedback``."""
+    normalized_guess = guess.strip().upper()
+    return [
+        word
+        for word in word_list
+        if score_guess(word.strip().upper(), normalized_guess) == feedback
+    ]
+
+
 def black_letter(
     word_list: list[str],
     letter_pos_list: list[tuple[str, int]],
@@ -46,10 +64,10 @@ def black_letter(
 ) -> list[str]:
     """Exclude excess occurrences of letters marked black."""
     normalized_black_letters = {
-        letter.upper() for letter, _position in letter_pos_list
+        letter.upper() for letter, _ in letter_pos_list
     }
     known_letter_counts: dict[str, int] = {}
-    for letter, _position in (yellow_positions or []) + (green_positions or []):
+    for letter, _ in (yellow_positions or []) + (green_positions or []):
         letter = letter.upper()
         known_letter_counts[letter] = known_letter_counts.get(letter, 0) + 1
 
@@ -73,7 +91,7 @@ def yellow_letter(
         (letter.upper(), position) for letter, position in letter_pos_list
     ]
     required_letter_counts: dict[str, int] = {}
-    for letter, _position in letter_pos_list + (green_positions or []):
+    for letter, _ in letter_pos_list + (green_positions or []):
         letter = letter.upper()
         required_letter_counts[letter] = required_letter_counts.get(letter, 0) + 1
 

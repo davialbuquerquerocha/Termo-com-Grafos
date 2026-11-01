@@ -11,8 +11,8 @@ from unittest.mock import patch
 import numpy as np
 
 from algorithm.inclusive import algorithm as inclusive
-from algorithm.inclusive import functions as inclusive_functions
 from algorithm.partition import algorithm as partition
+from algorithm.partition import functions as partition_functions
 from algorithm import functions as f
 from algorithm import termo_implementation as t
 import main
@@ -21,9 +21,9 @@ import main
 class AlgorithmTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        cls.words = f.file_to_list(str(partition.DATASET_PATH))
+        cls.words = f.file_to_list(str(partition_functions.DATASET_PATH))
 
-    def test_consistent_filter_matches_scoring_definition(self) -> None:
+    def test_feedback_filter_matches_scoring_definition(self) -> None:
         rng = random.Random(11)
         for _ in range(500):
             guess = rng.choice(self.words)
@@ -34,7 +34,7 @@ class AlgorithmTests(unittest.TestCase):
                 if t.score_guess(word, guess) == feedback
             ]
             self.assertEqual(
-                inclusive_functions.consistent_filter(
+                f.filter_words_by_feedback(
                     self.words,
                     guess,
                     feedback,
@@ -44,7 +44,7 @@ class AlgorithmTests(unittest.TestCase):
 
     def test_arroz_rapaz_exact_filter_has_three_candidates(self) -> None:
         feedback = t.score_guess("RAPAZ", "ARROZ")
-        candidates = inclusive_functions.consistent_filter(
+        candidates = f.filter_words_by_feedback(
             self.words,
             "ARROZ",
             feedback,
@@ -53,24 +53,26 @@ class AlgorithmTests(unittest.TestCase):
         self.assertIn("RAPAZ", candidates)
 
     def test_feedback_matrix_matches_score_guess_on_3000_pairs(self) -> None:
-        matrix, index, key = partition._get_feedback_matrix(self.words)
-        self.assertIn(key, partition._MATRIX_VALIDATED)
+        matrix, index, key = partition_functions._get_feedback_matrix(self.words)
+        self.assertIn(key, partition_functions._MATRIX_VALIDATED)
         rng = random.Random(0)
         for _ in range(3000):
             guess = rng.choice(self.words)
             answer = rng.choice(self.words)
-            expected = partition._feedback_code(t.score_guess(answer, guess))
+            expected = partition_functions._feedback_code(
+                t.score_guess(answer, guess)
+            )
             self.assertEqual(int(matrix[index[guess], index[answer]]), expected)
 
-    def test_matrix_filter_matches_consistent_filter_for_500_pairs(self) -> None:
-        matrix, index, _key = partition._get_feedback_matrix(self.words)
+    def test_matrix_filter_matches_general_feedback_filter_for_500_pairs(self) -> None:
+        matrix, index, _key = partition_functions._get_feedback_matrix(self.words)
         rng = random.Random(11)
         all_indices = list(range(len(self.words)))
         for _ in range(500):
             guess = rng.choice(self.words)
             answer = rng.choice(self.words)
             feedback = t.score_guess(answer, guess)
-            feedback_code = partition._feedback_code(feedback)
+            feedback_code = partition_functions._feedback_code(feedback)
             matching_indices = [
                 candidate_index
                 for candidate_index in all_indices
@@ -81,7 +83,7 @@ class AlgorithmTests(unittest.TestCase):
                 for candidate_index in matching_indices
             }
             filtered_candidates = set(
-                inclusive_functions.consistent_filter(
+                f.filter_words_by_feedback(
                     self.words,
                     guess,
                     feedback,
@@ -110,8 +112,8 @@ class AlgorithmTests(unittest.TestCase):
 
     def test_partition_solver_uses_prepared_bounded_override(self) -> None:
         words = ["PATOS", "FATOS", "GATOS", "JATOS", "NATOS", "RATOS", "MATOS"]
-        matrix, index, word_key = partition._get_feedback_matrix(words)
-        first_guess_index = partition._choose_partition_guess(
+        matrix, index, word_key = partition_functions._get_feedback_matrix(words)
+        first_guess_index = partition_functions._choose_partition_guess(
             list(range(len(words))),
             set(),
             matrix,
@@ -119,7 +121,9 @@ class AlgorithmTests(unittest.TestCase):
         )
         answer = next(word for word in words if index[word] != first_guess_index)
         first_guess = words[first_guess_index]
-        feedback_code = partition._feedback_code(t.score_guess(answer, first_guess))
+        feedback_code = partition_functions._feedback_code(
+            t.score_guess(answer, first_guess)
+        )
         possible_indices = np.flatnonzero(
             matrix[first_guess_index, :] == feedback_code
         ).tolist()
@@ -128,11 +132,14 @@ class AlgorithmTests(unittest.TestCase):
             for guess_index in range(len(words))
             if guess_index != first_guess_index
         )
-        override_key = word_key, partition._candidate_state_key(possible_indices)
+        override_key = (
+            word_key,
+            partition_functions._candidate_state_key(possible_indices),
+        )
         output = io.StringIO()
 
         with patch.dict(
-            partition._BOUNDED_GUESS_OVERRIDES,
+            partition_functions._BOUNDED_GUESS_OVERRIDES,
             {override_key: override_index},
         ), redirect_stdout(output):
             partition.partition_algorithm(
@@ -164,8 +171,8 @@ class AlgorithmTests(unittest.TestCase):
         self.assertLessEqual(statistics.mean(attempts), 4.2)
         self.assertLessEqual(sum(value > 6 for value in attempts), 15)
         self.assertLessEqual(max(attempts), 8)
-        first_guess_index = partition._FIRST_GUESS_CACHE[
-            partition._words_key(self.words)
+        first_guess_index = partition_functions._FIRST_GUESS_CACHE[
+            partition_functions._words_key(self.words)
         ]
         self.assertEqual(self.words[first_guess_index], "SORIA")
 
