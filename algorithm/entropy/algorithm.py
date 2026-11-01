@@ -4,7 +4,6 @@ import argparse
 from collections import Counter, OrderedDict
 from collections.abc import Callable, Sequence
 from concurrent.futures import FIRST_COMPLETED, ProcessPoolExecutor, wait
-from contextlib import contextmanager
 import hashlib
 import json
 import math
@@ -13,9 +12,8 @@ from pathlib import Path
 import random
 import re
 import tempfile
-from threading import Event, Thread
 from time import perf_counter
-from typing import Generator, Literal, NamedTuple
+from typing import Literal, NamedTuple
 
 import numpy as np
 
@@ -42,6 +40,8 @@ _WORKER_INITIAL_GUESS_INDEX: int | None = None
 _WORKER_PROFILE = False
 _WORKER_ROOT_CANDIDATES: list[str] | None = None
 _WORKER_ROOT_DEPTH = 0
+_GROUP_PROGRESS_INTERVAL = 10_000_000
+_WORKER_GROUP_PROGRESS_COUNT = 0
 
 
 class SolverEvaluation(NamedTuple):
@@ -76,31 +76,6 @@ def _validate_strategy(strategy: str) -> Strategy:
         "strategy must be 'entropy' for entropy-only selection or "
         "'groups' to recursively analyze feedback groups."
     )
-
-
-@contextmanager
-def _progress_heartbeat(
-    status: Callable[[], str],
-    interval_seconds: float = 10.0,
-) -> Generator[None, None, None]:
-    stop_event = Event()
-    started = perf_counter()
-
-    def report_progress() -> None:
-        while not stop_event.wait(interval_seconds):
-            elapsed = perf_counter() - started
-            print(
-                f"{status()} (tempo decorrido: {elapsed:.0f}s)",
-                flush=True,
-            )
-
-    reporter = Thread(target=report_progress, daemon=True)
-    reporter.start()
-    try:
-        yield
-    finally:
-        stop_event.set()
-        reporter.join()
 
 
 def _search_settings() -> dict[str, int | float]:
@@ -236,10 +211,7 @@ def choose_first_guess(workers: int = 1) -> tuple[int, float]:
         "a busca inicial pode ser demorada.",
         flush=True,
     )
-    with _progress_heartbeat(
-        lambda: "Busca inicial do primeiro palpite ainda em andamento."
-    ):
-        guess_index, expected_cost = best_move(candidates, workers=workers)
+    guess_index, expected_cost = best_move(candidates, workers=workers)
     if not 0 <= guess_index < len(candidates):
         raise RuntimeError("best_move returned an index outside the word list.")
     if not math.isfinite(expected_cost) or expected_cost <= 0:
@@ -551,6 +523,7 @@ def _initialize_evaluation_worker(
     global _WORKER_ANSWERS, _WORKER_STRATEGY, _WORKER_CONTEXT
     global _WORKER_MEMO_PATH, _WORKER_INITIAL_GUESS_INDEX, _WORKER_PROFILE
     global _WORKER_ROOT_CANDIDATES, _WORKER_ROOT_DEPTH
+    global _WORKER_GROUP_PROGRESS_COUNT
     partition_functions.DATASET_PATH = dataset_path
     process_name = multiprocessing.current_process().name
     worker_match = re.search(r"-(\d+)$", process_name)
@@ -567,7 +540,50 @@ def _initialize_evaluation_worker(
     _WORKER_PROFILE = collect_profile
     _WORKER_ROOT_CANDIDATES = root_candidates
     _WORKER_ROOT_DEPTH = root_depth
+    _WORKER_GROUP_PROGRESS_COUNT = 0
     _WORKER_CONTEXT = _search_context(all_answers, worker_memo_path)
+
+
+def _process_root_feedback_group(
+    feedback_group: tuple[int, list[str]],
+) -> tuple[int, int, float, helpers.SearchProfile | None]:
+    if _WORKER_CONTEXT is None or _WORKER_MEMO_PATH is None:
+        raise RuntimeError("The search worker was not initialized.")
+
+    feedback_code, candidates = feedback_group
+    helpers.configure_memo_store(_WORKER_MEMO_PATH, _WORKER_CONTEXT[3])
+    try:
+        if _WORKER_PROFILE:
+            with helpers.profile_search() as profile:
+                _, cost = helpers._best_move(
+                    candidates,
+                    _WORKER_ROOT_DEPTH + 1,
+                    _WORKER_CONTEXT,
+                    group_progress_callback=_worker_group_progress_reporter,
+                )
+            return feedback_code, len(candidates), cost, profile
+
+        _, cost = helpers._best_move(
+            candidates,
+            _WORKER_ROOT_DEPTH + 1,
+            _WORKER_CONTEXT,
+            group_progress_callback=_worker_group_progress_reporter,
+        )
+        return feedback_code, len(candidates), cost, None
+    finally:
+        helpers.close_memo_store()
+
+
+def _worker_group_progress_reporter() -> None:
+    global _WORKER_GROUP_PROGRESS_COUNT
+    _WORKER_GROUP_PROGRESS_COUNT += 1
+    if _WORKER_GROUP_PROGRESS_COUNT % _GROUP_PROGRESS_INTERVAL == 0:
+        process_name = multiprocessing.current_process().name
+        print(
+            f"{process_name}: {_WORKER_GROUP_PROGRESS_COUNT} grupos "
+            "recursivos concluídos dentro do palpite base.",
+            flush=True,
+        )
 
 
 def _process_root_guess_batch(
@@ -581,9 +597,15 @@ def _process_root_guess_batch(
     helpers.configure_memo_store(_WORKER_MEMO_PATH, _WORKER_CONTEXT[3])
     results: list[tuple[int, float]] = []
     try:
+        process_name = multiprocessing.current_process().name
         if _WORKER_PROFILE:
             with helpers.profile_search() as profile:
                 for guess_index, limit in guesses:
+                    print(
+                        f"{process_name}: avaliando palpite "
+                        f"{_WORKER_CONTEXT[0][guess_index]} e seus grupos.",
+                        flush=True,
+                    )
                     started = perf_counter()
                     cost = helpers._evaluate_guess(
                         guess_index,
@@ -598,6 +620,11 @@ def _process_root_guess_batch(
             return results, profile
 
         for guess_index, limit in guesses:
+            print(
+                f"{process_name}: avaliando palpite "
+                f"{_WORKER_CONTEXT[0][guess_index]} e seus grupos.",
+                flush=True,
+            )
             cost = helpers._evaluate_guess(
                 guess_index,
                 _WORKER_ROOT_CANDIDATES,
@@ -624,42 +651,42 @@ def _parallel_root_evaluator(
         return best_guess, best_cost
 
     first_guess = ranked_guesses[0]
-    search_started = perf_counter()
     started = perf_counter()
+    guess = context[0][first_guess]
     print(
-        f"Busca inicial: avaliando palpite base 1/{len(ranked_guesses)}.",
+        f"Busca inicial: avaliando palpite base "
+        f"{guess} (1/{len(ranked_guesses)}) "
+        "e seus grupos recursivos.",
         flush=True,
     )
-    with _progress_heartbeat(
-        lambda: "Busca inicial ainda calculando o palpite base 1/"
-        f"{len(ranked_guesses)}."
-    ):
+    feedback_groups = _partition_feedback_groups(first_guess, candidates, context)
+    remaining_guesses = ranked_guesses[1:]
+    completed_guesses = 1
+    can_parallelize_base = workers > 1 and len(feedback_groups) > 1
+    if not can_parallelize_base:
         best_cost = helpers._evaluate_guess(
             first_guess,
             candidates,
             best_cost,
             depth,
             context,
+            group_progress_callback=_group_progress_reporter(guess),
         )
-    if helpers._PROFILE is not None:
-        helpers._PROFILE.guess_evaluations += 1
-        helpers._PROFILE.evaluation_seconds += perf_counter() - started
-    if math.isfinite(best_cost):
-        best_guess = first_guess
+        if helpers._PROFILE is not None:
+            helpers._PROFILE.guess_evaluations += 1
+            helpers._PROFILE.evaluation_seconds += perf_counter() - started
+        if math.isfinite(best_cost):
+            best_guess = first_guess
+        if not remaining_guesses:
+            return best_guess, best_cost
 
-    remaining_guesses = ranked_guesses[1:]
-    if not remaining_guesses:
-        return best_guess, best_cost
-    completed_guesses = 1
-    progress_interval = max(1, len(ranked_guesses) // 100)
-    next_progress_report = progress_interval
-    print(
-        f"Busca inicial: palpite base concluído; "
-        f"avaliando os outros {len(remaining_guesses)} em paralelo.",
-        flush=True,
-    )
-
-    worker_count = min(workers, len(remaining_guesses))
+    if can_parallelize_base:
+        worker_count = min(
+            workers,
+            max(len(feedback_groups), len(remaining_guesses)),
+        )
+    else:
+        worker_count = min(workers, len(remaining_guesses))
     if helpers._PROFILE is not None:
         helpers._PROFILE.worker_processes = max(
             helpers._PROFILE.worker_processes,
@@ -668,7 +695,7 @@ def _parallel_root_evaluator(
     memo_base = partition_functions.DATASET_PATH.with_name(
         "entropy_memo_worker.sqlite3"
     )
-    batch_size = 8
+    batch_size = 1
     wave_size = worker_count * batch_size
     with ProcessPoolExecutor(
         max_workers=worker_count,
@@ -686,6 +713,66 @@ def _parallel_root_evaluator(
             depth,
         ),
     ) as executor:
+        if can_parallelize_base:
+            print(
+                f"Busca inicial: distribuindo os {len(feedback_groups)} "
+                f"grupos de feedback não resolvidos de {guess} entre "
+                f"{worker_count} workers.",
+                flush=True,
+            )
+            futures = {
+                executor.submit(_process_root_feedback_group, group): group[0]
+                for group in feedback_groups
+            }
+            completed_groups = 0
+            group_costs: dict[int, tuple[int, float]] = {}
+            while futures:
+                completed, _ = wait(
+                    futures,
+                    return_when=FIRST_COMPLETED,
+                )
+                for future in completed:
+                    feedback_code = futures.pop(future)
+                    result_feedback, group_size, group_cost, worker_profile = (
+                        future.result()
+                    )
+                    if feedback_code != result_feedback:
+                        raise RuntimeError(
+                            "A root feedback worker returned the wrong group."
+                        )
+                    if (
+                        helpers._PROFILE is not None
+                        and worker_profile is not None
+                    ):
+                        _merge_worker_profile(helpers._PROFILE, worker_profile)
+                    group_costs[feedback_code] = (group_size, group_cost)
+                    completed_groups += 1
+                    print(
+                        f"Busca inicial: grupo {_feedback_text(feedback_code)} "
+                        f"do palpite {guess} concluído "
+                        f"({completed_groups}/{len(feedback_groups)}).",
+                        flush=True,
+                    )
+
+            base_cost = 1.0
+            for feedback_code, _ in feedback_groups:
+                group_size, group_cost = group_costs[feedback_code]
+                base_cost += group_size * group_cost / len(candidates)
+            if helpers._PROFILE is not None:
+                helpers._PROFILE.guess_evaluations += 1
+                helpers._PROFILE.evaluation_seconds += perf_counter() - started
+            if math.isfinite(base_cost):
+                best_guess = first_guess
+                best_cost = base_cost
+
+        if not remaining_guesses:
+            return best_guess, best_cost
+        print(
+            f"Busca inicial: palpite base concluído; "
+            f"avaliando os outros {len(remaining_guesses)} palpites em paralelo.",
+            flush=True,
+        )
+
         for wave_start in range(0, len(remaining_guesses), wave_size):
             wave = remaining_guesses[wave_start:wave_start + wave_size]
             tasks = [
@@ -696,25 +783,14 @@ def _parallel_root_evaluator(
                 for index in range(0, len(wave), batch_size)
             ]
             futures = {
-                executor.submit(_process_root_guess_batch, task): len(task)
+                executor.submit(_process_root_guess_batch, task): task[0][0]
                 for task in tasks
             }
             while futures:
                 completed, _ = wait(
                     futures,
-                    timeout=10.0,
                     return_when=FIRST_COMPLETED,
                 )
-                if not completed:
-                    elapsed = perf_counter() - search_started
-                    print(
-                        f"Busca inicial: {completed_guesses}/"
-                        f"{len(ranked_guesses)} palpites concluídos; "
-                        f"em andamento nos workers "
-                        f"({elapsed:.0f}s decorridos).",
-                        flush=True,
-                    )
-                    continue
                 for future in completed:
                     batch_results, worker_profile = future.result()
                     if (
@@ -726,21 +802,62 @@ def _parallel_root_evaluator(
                         if cost < best_cost:
                             best_guess = guess_index
                             best_cost = cost
-                    completed_guesses += futures.pop(future)
-                    if (
-                        completed_guesses >= next_progress_report
-                        or completed_guesses == len(ranked_guesses)
-                    ):
-                        while next_progress_report <= completed_guesses:
-                            next_progress_report += progress_interval
-                        elapsed = perf_counter() - search_started
-                        print(
-                            f"Busca inicial: {completed_guesses}/"
-                            f"{len(ranked_guesses)} palpites concluídos "
-                            f"({elapsed:.0f}s).",
-                            flush=True,
-                        )
+                    completed_guess_index = futures.pop(future)
+                    completed_guesses += 1
+                    print(
+                        f"Busca inicial: palpite "
+                        f"{context[0][completed_guess_index]} concluído; "
+                        f"{completed_guesses}/{len(ranked_guesses)} "
+                        "palpites avaliados.",
+                        flush=True,
+                    )
     return best_guess, best_cost
+
+
+def _partition_feedback_groups(
+    guess_index: int,
+    candidates: list[str],
+    context: _SearchContext,
+) -> list[tuple[int, list[str]]]:
+    guesses, word_indices, matrix, _ = context
+    candidate_indices = np.fromiter(
+        (word_indices[candidate] for candidate in candidates),
+        dtype=np.intp,
+        count=len(candidates),
+    )
+    feedback_codes = matrix[
+        word_indices[guesses[guess_index]],
+        candidate_indices,
+    ]
+    groups: dict[int, list[str]] = {}
+    for candidate, feedback_code in zip(candidates, feedback_codes):
+        groups.setdefault(int(feedback_code), []).append(candidate)
+
+    winning_feedback = partition_functions._FEEDBACK_PATTERN_COUNT - 1
+    return sorted(
+        (
+            (feedback_code, group)
+            for feedback_code, group in groups.items()
+            if feedback_code != winning_feedback
+        ),
+        key=lambda item: len(item[1]),
+    )
+
+
+def _group_progress_reporter(guess: str) -> Callable[[], None]:
+    completed_groups = 0
+
+    def report_progress() -> None:
+        nonlocal completed_groups
+        completed_groups += 1
+        if completed_groups % _GROUP_PROGRESS_INTERVAL == 0:
+            print(
+                f"Busca inicial: palpite base {guess}; "
+                f"{completed_groups} grupos de feedback recursivos concluídos.",
+                flush=True,
+            )
+
+    return report_progress
 
 
 def _process_evaluation_batch(
@@ -976,10 +1093,7 @@ def evaluate_solver(
         "Preparando a matriz de feedback e o contexto da avaliação.",
         flush=True,
     )
-    with _progress_heartbeat(
-        lambda: "Preparação da matriz de feedback ainda em andamento."
-    ):
-        context = _search_context(all_answers)
+    context = _search_context(all_answers)
     evaluation_key = helpers.evaluation_scope_key(selected_answers)
     json_output_path = _evaluation_json_path(
         strategy,

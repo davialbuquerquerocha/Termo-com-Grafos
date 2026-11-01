@@ -23,6 +23,7 @@ RANKING_CHUNK_SIZE = 256
 SEARCH_ALGORITHM_VERSION = 3
 MEMO_MEMORY_LIMIT = 20_000
 MEMO_COMMIT_INTERVAL = 1_000
+MEMO_BUSY_TIMEOUT_SECONDS = 300
 _BEST_MOVE_CACHE: OrderedDict[
     tuple[str, int, int, int, int, int, float, int, bytes],
     tuple[int, float],
@@ -117,7 +118,13 @@ def configure_memo_store(path: Path, word_key: str) -> None:
 
     close_memo_store()
     resolved_path.parent.mkdir(parents=True, exist_ok=True)
-    connection = sqlite3.connect(resolved_path)
+    connection = sqlite3.connect(
+        resolved_path,
+        timeout=MEMO_BUSY_TIMEOUT_SECONDS,
+    )
+    connection.execute(
+        f"PRAGMA busy_timeout={MEMO_BUSY_TIMEOUT_SECONDS * 1_000}"
+    )
     connection.execute("PRAGMA journal_mode=WAL")
     connection.execute("PRAGMA synchronous=NORMAL")
     connection.executescript(
@@ -529,6 +536,7 @@ def _evaluate_guess(
     limit: float,
     depth: int,
     context: _SearchContext,
+    group_progress_callback: Callable[[], None] | None = None,
 ) -> float:
     guesses, word_indices, matrix, _ = context
     candidate_indices = np.fromiter(
@@ -550,7 +558,14 @@ def _evaluate_guess(
 
     expected_cost = 1.0
     for group in sorted(remaining_groups, key=len):
-        _, group_cost = _best_move(group, depth + 1, context)
+        _, group_cost = _best_move(
+            group,
+            depth + 1,
+            context,
+            group_progress_callback=group_progress_callback,
+        )
+        if group_progress_callback is not None:
+            group_progress_callback()
         expected_cost += len(group) * group_cost / len(candidates)
         if expected_cost > limit:
             return float("inf")
@@ -565,6 +580,7 @@ def _best_move(
         [list[str], list[int], int, _SearchContext],
         tuple[int, float],
     ] | None = None,
+    group_progress_callback: Callable[[], None] | None = None,
 ) -> tuple[int, float]:
     _, _, _, word_key = context
     if _MEMO_CONNECTION is None:
@@ -625,6 +641,7 @@ def _best_move(
                     best_cost,
                     depth,
                     context,
+                    group_progress_callback,
                 )
                 if _PROFILE is not None:
                     _PROFILE.guess_evaluations += 1

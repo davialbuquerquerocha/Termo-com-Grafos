@@ -42,18 +42,19 @@ serial); escolha a quantidade com --workers:
     python -c "from algorithm.entropy.algorithm import main; main()" evaluate --strategy entropy --workers 4
     python -c "from algorithm.entropy.algorithm import main; main()" evaluate --strategy groups --workers 4 --profile
 
-O paralelismo distribui as respostas avaliadas entre processos; a busca do
-primeiro palpite de groups tambem distribui candidatos entre esses processos.
-As duas etapas usam os mesmos nucleos em momentos diferentes, sem criar pools
-aninhados; dentro de cada candidato avaliado, a recursao continua serial. O
-desempenho depende da CPU e do tamanho da amostra. Cada worker usa seu proprio
+O paralelismo distribui as respostas avaliadas entre processos. Na busca do
+primeiro palpite de groups, os grupos de feedback desse palpite sao distribuidos
+entre os workers; em seguida, os outros palpites candidatos tambem sao avaliados
+em paralelo. Nao ha pools aninhados: a recursao dentro de cada grupo continua
+serial. O desempenho depende da CPU e do tamanho da amostra. Cada worker usa seu proprio
 arquivo entropy_memo_worker_*.sqlite3 para evitar concorrencia de escrita; os
 resultados por resposta continuam no banco principal e podem ser retomados
-normalmente.
-Durante a preparacao da matriz e a busca inicial, o programa informa a fase
-atual e imprime um aviso periodico a cada 10 segundos enquanto uma etapa longa
-ainda esta sendo calculada. Na busca paralela, tambem informa quantos palpites
-ja terminaram.
+normalmente. Se duas execucoes usarem o mesmo banco ao mesmo tempo, as gravacoes
+aguardam a liberacao do SQLite por ate cinco minutos; ainda assim, evite iniciar
+avaliacoes simultaneas com a mesma lista.
+Durante a busca inicial, o programa mostra a palavra base que esta sendo
+avaliada e informa a cada 10.000.000 grupos de feedback recursivos concluidos.
+Tambem identifica cada palpite concluido na etapa paralela.
 
 Teste uma amostra deterministica antes da avaliacao completa. A amostra limita
 as respostas avaliadas, mas o solver continua usando toda a lista aceita como

@@ -3,7 +3,9 @@ from contextlib import redirect_stdout
 import io
 import json
 import random
+import sqlite3
 import tempfile
+from threading import Event, Thread
 import time
 import unittest
 from unittest.mock import patch
@@ -17,18 +19,6 @@ from algorithm.partition import functions as partition_functions
 
 
 class EntropyAlgorithmTests(unittest.TestCase):
-    def test_progress_heartbeat_reports_long_running_work(self) -> None:
-        output = io.StringIO()
-        with redirect_stdout(output):
-            with solver._progress_heartbeat(
-                lambda: "Busca de teste em andamento",
-                interval_seconds=0.01,
-            ):
-                time.sleep(0.035)
-
-        self.assertIn("Busca de teste em andamento", output.getvalue())
-        self.assertIn("tempo decorrido", output.getvalue())
-
     def test_entropy_package_exports_both_strategies(self) -> None:
         self.assertIs(entropy_package.interactive_play, solver.interactive_play)
         self.assertIs(entropy_package.entropy, helpers.entropy)
@@ -382,6 +372,43 @@ class EntropyAlgorithmTests(unittest.TestCase):
             self.assertEqual(profile.memo_hits, 1)
             helpers.close_memo_store()
 
+    def test_memo_store_waits_for_a_concurrent_sqlite_writer(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            database_path = Path(directory) / "memo.sqlite3"
+            helpers.configure_memo_store(database_path, "test")
+            writer_started = Event()
+
+            def hold_write_lock() -> None:
+                connection = sqlite3.connect(database_path)
+                connection.execute("BEGIN IMMEDIATE")
+                writer_started.set()
+                time.sleep(0.1)
+                connection.commit()
+                connection.close()
+
+            writer = Thread(target=hold_write_lock)
+            writer.start()
+            try:
+                self.assertTrue(writer_started.wait(timeout=5))
+                busy_timeout = helpers._require_memo_connection().execute(
+                    "PRAGMA busy_timeout"
+                ).fetchone()[0]
+                self.assertEqual(
+                    busy_timeout,
+                    helpers.MEMO_BUSY_TIMEOUT_SECONDS * 1_000,
+                )
+                state_key = (
+                    "test",
+                    0,
+                    *helpers._search_config_key(),
+                    np.asarray([0], dtype=np.uint32).tobytes(),
+                )
+                helpers._memo_put(state_key, (0, 1.0))
+            finally:
+                writer.join(timeout=5)
+                helpers.close_memo_store()
+            self.assertFalse(writer.is_alive())
+
     def test_evaluate_solver_resumes_answer_results_and_reuses_context(self) -> None:
         words = ["AAAAA", "BBBBB", "CCCCC"]
         context = (
@@ -532,18 +559,20 @@ class EntropyAlgorithmTests(unittest.TestCase):
                     [game["answer"] for game in saved_results["games"]],
                     words,
                 )
-                feedback_context = solver._search_context(words)
+                feedback_matrix, feedback_indices, _ = (
+                    partition_functions._get_feedback_matrix(words)
+                )
                 for game in saved_results["games"]:
                     self.assertEqual(len(game["guesses"]), game["attempts"])
                     self.assertEqual(game["guesses"][-1]["guess"], game["answer"])
                     self.assertEqual(game["guesses"][-1]["feedback"], "VVVVV")
-                    answer_index = feedback_context[1][game["answer"]]
+                    answer_index = feedback_indices[game["answer"]]
                     for step in game["guesses"]:
-                        guess_index = feedback_context[1][step["guess"]]
+                        guess_index = feedback_indices[step["guess"]]
                         self.assertEqual(
                             step["feedback"],
                             solver._feedback_text(
-                                int(feedback_context[2][guess_index, answer_index])
+                                int(feedback_matrix[guess_index, answer_index])
                             ),
                         )
                 self.assertIn("summary", saved_results)
@@ -575,9 +604,18 @@ class EntropyAlgorithmTests(unittest.TestCase):
                     parallel_path,
                 ):
                     with helpers.profile_search() as profile:
-                        parallel_result = solver.best_move(words, workers=2)
+                        with redirect_stdout(io.StringIO()) as progress_output:
+                            parallel_result = solver.best_move(words, workers=2)
                     helpers.close_memo_store()
                 self.assertEqual(profile.worker_processes, 2)
+                self.assertIn("palpite base", progress_output.getvalue())
+                self.assertIn("grupos recursivos", progress_output.getvalue())
+                self.assertIn("distribuindo os", progress_output.getvalue())
+                self.assertIn("grupo ", progress_output.getvalue())
+                self.assertIn("palpite ", progress_output.getvalue())
+                self.assertNotIn("Ainda avaliando", progress_output.getvalue())
+                self.assertNotIn("ainda em andamento", progress_output.getvalue())
+                self.assertNotIn("workers ainda avaliando", progress_output.getvalue())
 
                 helpers._BEST_MOVE_CACHE.clear()
                 with patch.object(
@@ -600,6 +638,80 @@ class EntropyAlgorithmTests(unittest.TestCase):
                     matrix._mmap.close()
                 partition_functions._WORD_INDEX_CACHE.pop(key, None)
                 partition_functions._MATRIX_VALIDATED.discard(key)
+
+    def test_base_guess_reports_at_recursive_feedback_group_interval(self) -> None:
+        words = ["SORIA"]
+        context = (
+            words,
+            {"SORIA": 0},
+            np.zeros((1, 1), dtype=np.uint8),
+            "test",
+        )
+        output = io.StringIO()
+
+        def evaluate_with_progress(*args, **kwargs) -> float:
+            callback = kwargs["group_progress_callback"]
+            for _ in range(200):
+                callback()
+            return 1.0
+
+        with patch.object(solver, "_GROUP_PROGRESS_INTERVAL", 100):
+            with patch.object(
+                helpers,
+                "_evaluate_guess",
+                side_effect=evaluate_with_progress,
+            ):
+                with redirect_stdout(output):
+                    result = solver._parallel_root_evaluator(
+                        words,
+                        [0],
+                        0,
+                        context,
+                        4,
+                    )
+
+        self.assertEqual(result, (0, 1.0))
+        progress_lines = [
+            line for line in output.getvalue().splitlines()
+            if "grupos de feedback recursivos concluídos" in line
+        ]
+        self.assertEqual(len(progress_lines), 2)
+        self.assertIn("100 grupos", progress_lines[0])
+        self.assertIn("200 grupos", progress_lines[1])
+
+    def test_evaluate_guess_reports_completed_recursive_groups(self) -> None:
+        words = ["AAAAA", "BBBBB", "CCCCC"]
+        context = (
+            words,
+            {word: index for index, word in enumerate(words)},
+            np.asarray(
+                [[0, 1, 2], [0, 0, 0], [0, 0, 0]],
+                dtype=np.uint8,
+            ),
+            "test",
+        )
+        completed_groups: list[None] = []
+        callback = lambda: completed_groups.append(None)
+
+        with patch.object(helpers, "_best_move", return_value=(0, 1.0)) as best_move:
+            cost = helpers._evaluate_guess(
+                0,
+                words,
+                float("inf"),
+                0,
+                context,
+                group_progress_callback=callback,
+            )
+
+        self.assertTrue(np.isfinite(cost))
+        self.assertEqual(len(completed_groups), 3)
+        self.assertEqual(best_move.call_count, 3)
+        self.assertTrue(
+            all(
+                call.kwargs["group_progress_callback"] is callback
+                for call in best_move.call_args_list
+            )
+        )
 
     def test_evaluate_solver_rejects_non_positive_worker_count(self) -> None:
         with self.assertRaisesRegex(ValueError, "workers must be greater than zero"):
