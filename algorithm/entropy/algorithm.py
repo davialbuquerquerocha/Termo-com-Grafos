@@ -3,7 +3,8 @@
 import argparse
 from collections import Counter, OrderedDict
 from collections.abc import Callable, Sequence
-from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import FIRST_COMPLETED, ProcessPoolExecutor, wait
+from contextlib import contextmanager
 import hashlib
 import json
 import math
@@ -12,7 +13,9 @@ from pathlib import Path
 import random
 import re
 import tempfile
-from typing import Literal, NamedTuple
+from threading import Event, Thread
+from time import perf_counter
+from typing import Generator, Literal, NamedTuple
 
 import numpy as np
 
@@ -37,6 +40,8 @@ _WORKER_CONTEXT: _SearchContext | None = None
 _WORKER_MEMO_PATH: Path | None = None
 _WORKER_INITIAL_GUESS_INDEX: int | None = None
 _WORKER_PROFILE = False
+_WORKER_ROOT_CANDIDATES: list[str] | None = None
+_WORKER_ROOT_DEPTH = 0
 
 
 class SolverEvaluation(NamedTuple):
@@ -71,6 +76,31 @@ def _validate_strategy(strategy: str) -> Strategy:
         "strategy must be 'entropy' for entropy-only selection or "
         "'groups' to recursively analyze feedback groups."
     )
+
+
+@contextmanager
+def _progress_heartbeat(
+    status: Callable[[], str],
+    interval_seconds: float = 10.0,
+) -> Generator[None, None, None]:
+    stop_event = Event()
+    started = perf_counter()
+
+    def report_progress() -> None:
+        while not stop_event.wait(interval_seconds):
+            elapsed = perf_counter() - started
+            print(
+                f"{status()} (tempo decorrido: {elapsed:.0f}s)",
+                flush=True,
+            )
+
+    reporter = Thread(target=report_progress, daemon=True)
+    reporter.start()
+    try:
+        yield
+    finally:
+        stop_event.set()
+        reporter.join()
 
 
 def _search_settings() -> dict[str, int | float]:
@@ -119,15 +149,36 @@ def _search_context(
     return guesses, word_indices, matrix, word_key
 
 
-def best_move(candidates: list[str], depth: int = 0) -> tuple[int, float]:
+def best_move(
+    candidates: list[str],
+    depth: int = 0,
+    workers: int = 1,
+) -> tuple[int, float]:
     """Return the best guess index and expected number of guesses."""
     if depth < 0:
         raise ValueError("depth must be non-negative.")
+    if workers <= 0:
+        raise ValueError("workers must be greater than zero.")
     normalized_candidates = _normalize_candidates(candidates)
     if not normalized_candidates:
         raise ValueError("candidates must not be empty.")
     context = _search_context(normalized_candidates)
-    return helpers._best_move(normalized_candidates, depth, context)
+    if workers == 1:
+        return helpers._best_move(normalized_candidates, depth, context)
+    return helpers._best_move(
+        normalized_candidates,
+        depth,
+        context,
+        parallel_evaluator=lambda root_candidates, ranked_guesses, root_depth, root_context: (
+            _parallel_root_evaluator(
+                root_candidates,
+                ranked_guesses,
+                root_depth,
+                root_context,
+                workers,
+            )
+        ),
+    )
 
 
 def evaluate_guess(i: int, candidates: list[str], limit: float) -> float:
@@ -141,8 +192,10 @@ def evaluate_guess(i: int, candidates: list[str], limit: float) -> float:
     return helpers._evaluate_guess(i, normalized_candidates, limit, 0, context)
 
 
-def choose_first_guess() -> tuple[int, float]:
+def choose_first_guess(workers: int = 1) -> tuple[int, float]:
     """Load or calculate the deep-search first guess and persist its result."""
+    if workers <= 0:
+        raise ValueError("workers must be greater than zero.")
     word_list_path = partition_functions.DATASET_PATH
     word_list_content = word_list_path.read_bytes()
     word_list_hash = hashlib.sha256(word_list_content).hexdigest()
@@ -178,7 +231,15 @@ def choose_first_guess() -> tuple[int, float]:
                     f"Cached first guess {guess!r} is absent from {word_list_path}."
                 ) from error
 
-    guess_index, expected_cost = best_move(candidates)
+    print(
+        "Calculando o primeiro palpite de groups; "
+        "a busca inicial pode ser demorada.",
+        flush=True,
+    )
+    with _progress_heartbeat(
+        lambda: "Busca inicial do primeiro palpite ainda em andamento."
+    ):
+        guess_index, expected_cost = best_move(candidates, workers=workers)
     if not 0 <= guess_index < len(candidates):
         raise RuntimeError("best_move returned an index outside the word list.")
     if not math.isfinite(expected_cost) or expected_cost <= 0:
@@ -484,9 +545,12 @@ def _initialize_evaluation_worker(
     worker_count: int,
     initial_guess_index: int | None,
     collect_profile: bool,
+    root_candidates: list[str] | None = None,
+    root_depth: int = 0,
 ) -> None:
     global _WORKER_ANSWERS, _WORKER_STRATEGY, _WORKER_CONTEXT
     global _WORKER_MEMO_PATH, _WORKER_INITIAL_GUESS_INDEX, _WORKER_PROFILE
+    global _WORKER_ROOT_CANDIDATES, _WORKER_ROOT_DEPTH
     partition_functions.DATASET_PATH = dataset_path
     process_name = multiprocessing.current_process().name
     worker_match = re.search(r"-(\d+)$", process_name)
@@ -501,7 +565,182 @@ def _initialize_evaluation_worker(
     _WORKER_MEMO_PATH = worker_memo_path
     _WORKER_INITIAL_GUESS_INDEX = initial_guess_index
     _WORKER_PROFILE = collect_profile
+    _WORKER_ROOT_CANDIDATES = root_candidates
+    _WORKER_ROOT_DEPTH = root_depth
     _WORKER_CONTEXT = _search_context(all_answers, worker_memo_path)
+
+
+def _process_root_guess_batch(
+    guesses: list[tuple[int, float]],
+) -> tuple[list[tuple[int, float]], helpers.SearchProfile | None]:
+    if _WORKER_CONTEXT is None or _WORKER_MEMO_PATH is None:
+        raise RuntimeError("The search worker was not initialized.")
+    if _WORKER_ROOT_CANDIDATES is None:
+        raise RuntimeError("The root search worker has no candidate state.")
+
+    helpers.configure_memo_store(_WORKER_MEMO_PATH, _WORKER_CONTEXT[3])
+    results: list[tuple[int, float]] = []
+    try:
+        if _WORKER_PROFILE:
+            with helpers.profile_search() as profile:
+                for guess_index, limit in guesses:
+                    started = perf_counter()
+                    cost = helpers._evaluate_guess(
+                        guess_index,
+                        _WORKER_ROOT_CANDIDATES,
+                        limit,
+                        _WORKER_ROOT_DEPTH,
+                        _WORKER_CONTEXT,
+                    )
+                    profile.guess_evaluations += 1
+                    profile.evaluation_seconds += perf_counter() - started
+                    results.append((guess_index, cost))
+            return results, profile
+
+        for guess_index, limit in guesses:
+            cost = helpers._evaluate_guess(
+                guess_index,
+                _WORKER_ROOT_CANDIDATES,
+                limit,
+                _WORKER_ROOT_DEPTH,
+                _WORKER_CONTEXT,
+            )
+            results.append((guess_index, cost))
+        return results, None
+    finally:
+        helpers.close_memo_store()
+
+
+def _parallel_root_evaluator(
+    candidates: list[str],
+    ranked_guesses: list[int],
+    depth: int,
+    context: _SearchContext,
+    workers: int,
+) -> tuple[int, float]:
+    best_guess = -1
+    best_cost = float("inf")
+    if not ranked_guesses:
+        return best_guess, best_cost
+
+    first_guess = ranked_guesses[0]
+    search_started = perf_counter()
+    started = perf_counter()
+    print(
+        f"Busca inicial: avaliando palpite base 1/{len(ranked_guesses)}.",
+        flush=True,
+    )
+    with _progress_heartbeat(
+        lambda: "Busca inicial ainda calculando o palpite base 1/"
+        f"{len(ranked_guesses)}."
+    ):
+        best_cost = helpers._evaluate_guess(
+            first_guess,
+            candidates,
+            best_cost,
+            depth,
+            context,
+        )
+    if helpers._PROFILE is not None:
+        helpers._PROFILE.guess_evaluations += 1
+        helpers._PROFILE.evaluation_seconds += perf_counter() - started
+    if math.isfinite(best_cost):
+        best_guess = first_guess
+
+    remaining_guesses = ranked_guesses[1:]
+    if not remaining_guesses:
+        return best_guess, best_cost
+    completed_guesses = 1
+    progress_interval = max(1, len(ranked_guesses) // 100)
+    next_progress_report = progress_interval
+    print(
+        f"Busca inicial: palpite base concluído; "
+        f"avaliando os outros {len(remaining_guesses)} em paralelo.",
+        flush=True,
+    )
+
+    worker_count = min(workers, len(remaining_guesses))
+    if helpers._PROFILE is not None:
+        helpers._PROFILE.worker_processes = max(
+            helpers._PROFILE.worker_processes,
+            worker_count,
+        )
+    memo_base = partition_functions.DATASET_PATH.with_name(
+        "entropy_memo_worker.sqlite3"
+    )
+    batch_size = 8
+    wave_size = worker_count * batch_size
+    with ProcessPoolExecutor(
+        max_workers=worker_count,
+        mp_context=multiprocessing.get_context("spawn"),
+        initializer=_initialize_evaluation_worker,
+        initargs=(
+            context[0],
+            "deep",
+            partition_functions.DATASET_PATH,
+            memo_base,
+            worker_count,
+            None,
+            helpers._PROFILE is not None,
+            candidates,
+            depth,
+        ),
+    ) as executor:
+        for wave_start in range(0, len(remaining_guesses), wave_size):
+            wave = remaining_guesses[wave_start:wave_start + wave_size]
+            tasks = [
+                [
+                    (guess_index, best_cost)
+                    for guess_index in wave[index:index + batch_size]
+                ]
+                for index in range(0, len(wave), batch_size)
+            ]
+            futures = {
+                executor.submit(_process_root_guess_batch, task): len(task)
+                for task in tasks
+            }
+            while futures:
+                completed, _ = wait(
+                    futures,
+                    timeout=10.0,
+                    return_when=FIRST_COMPLETED,
+                )
+                if not completed:
+                    elapsed = perf_counter() - search_started
+                    print(
+                        f"Busca inicial: {completed_guesses}/"
+                        f"{len(ranked_guesses)} palpites concluídos; "
+                        f"em andamento nos workers "
+                        f"({elapsed:.0f}s decorridos).",
+                        flush=True,
+                    )
+                    continue
+                for future in completed:
+                    batch_results, worker_profile = future.result()
+                    if (
+                        helpers._PROFILE is not None
+                        and worker_profile is not None
+                    ):
+                        _merge_worker_profile(helpers._PROFILE, worker_profile)
+                    for guess_index, cost in batch_results:
+                        if cost < best_cost:
+                            best_guess = guess_index
+                            best_cost = cost
+                    completed_guesses += futures.pop(future)
+                    if (
+                        completed_guesses >= next_progress_report
+                        or completed_guesses == len(ranked_guesses)
+                    ):
+                        while next_progress_report <= completed_guesses:
+                            next_progress_report += progress_interval
+                        elapsed = perf_counter() - search_started
+                        print(
+                            f"Busca inicial: {completed_guesses}/"
+                            f"{len(ranked_guesses)} palpites concluídos "
+                            f"({elapsed:.0f}s).",
+                            flush=True,
+                        )
+    return best_guess, best_cost
 
 
 def _process_evaluation_batch(
@@ -733,7 +972,14 @@ def evaluate_solver(
             + ", ".join(sorted(invalid_answers))
         )
 
-    context = _search_context(all_answers)
+    print(
+        "Preparando a matriz de feedback e o contexto da avaliação.",
+        flush=True,
+    )
+    with _progress_heartbeat(
+        lambda: "Preparação da matriz de feedback ainda em andamento."
+    ):
+        context = _search_context(all_answers)
     evaluation_key = helpers.evaluation_scope_key(selected_answers)
     json_output_path = _evaluation_json_path(
         strategy,
@@ -799,11 +1045,16 @@ def evaluate_solver(
     pending_results: dict[str, int] = {}
     initial_guess_index: int | None = None
     if pending_answers and strategy == "deep":
-        initial_guess_index = choose_first_guess()[0]
+        if helpers._PROFILE is not None:
+            helpers._PROFILE.worker_processes = min(workers, len(all_answers))
+        initial_guess_index = choose_first_guess(workers=workers)[0]
 
     worker_count = min(workers, len(pending_answers)) if pending_answers else 0
     if helpers._PROFILE is not None:
-        helpers._PROFILE.worker_processes = worker_count
+        helpers._PROFILE.worker_processes = max(
+            helpers._PROFILE.worker_processes,
+            worker_count,
+        )
 
     _save_evaluation_json(
         json_output_path,
@@ -1026,7 +1277,7 @@ def main(argv: Sequence[str] | None = None) -> None:
         "--workers",
         type=int,
         default=1,
-        help="number of CPU worker processes used to evaluate answers",
+        help="maximum CPU worker processes for groups search and evaluation",
     )
     evaluate_parser.add_argument(
         "--no-resume",
@@ -1084,7 +1335,7 @@ def main(argv: Sequence[str] | None = None) -> None:
                 resume=not args.no_resume,
                 checkpoint_interval=args.checkpoint_interval,
                 workers=args.workers,
-            )
+                )
         print(f"Games: {result.total_games}")
         print(f"Average guesses: {result.average_attempts:.3f}")
         print(f"Worst case: {result.worst_case}")

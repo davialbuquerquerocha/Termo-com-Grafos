@@ -4,6 +4,7 @@ import io
 import json
 import random
 import tempfile
+import time
 import unittest
 from unittest.mock import patch
 
@@ -16,6 +17,18 @@ from algorithm.partition import functions as partition_functions
 
 
 class EntropyAlgorithmTests(unittest.TestCase):
+    def test_progress_heartbeat_reports_long_running_work(self) -> None:
+        output = io.StringIO()
+        with redirect_stdout(output):
+            with solver._progress_heartbeat(
+                lambda: "Busca de teste em andamento",
+                interval_seconds=0.01,
+            ):
+                time.sleep(0.035)
+
+        self.assertIn("Busca de teste em andamento", output.getvalue())
+        self.assertIn("tempo decorrido", output.getvalue())
+
     def test_entropy_package_exports_both_strategies(self) -> None:
         self.assertIs(entropy_package.interactive_play, solver.interactive_play)
         self.assertIs(entropy_package.entropy, helpers.entropy)
@@ -536,6 +549,48 @@ class EntropyAlgorithmTests(unittest.TestCase):
                 self.assertIn("summary", saved_results)
             finally:
                 helpers.close_memo_store()
+                key = partition_functions._words_key(words)
+                matrix = partition_functions._FEEDBACK_MATRIX_CACHE.pop(
+                    key,
+                    None,
+                )
+                if matrix is not None and getattr(matrix, "_mmap", None) is not None:
+                    matrix._mmap.close()
+                partition_functions._WORD_INDEX_CACHE.pop(key, None)
+                partition_functions._MATRIX_VALIDATED.discard(key)
+
+    def test_best_move_parallel_root_matches_serial(self) -> None:
+        words = random.Random(2026).sample(solver._load_answers(), 12)
+
+        with tempfile.TemporaryDirectory() as directory:
+            parallel_path = Path(directory) / "parallel_answers.txt"
+            serial_path = Path(directory) / "serial_answers.txt"
+            word_content = "\n".join(words)
+            parallel_path.write_text(word_content, encoding="utf-8")
+            serial_path.write_text(word_content, encoding="utf-8")
+            try:
+                with patch.object(
+                    partition_functions,
+                    "DATASET_PATH",
+                    parallel_path,
+                ):
+                    with helpers.profile_search() as profile:
+                        parallel_result = solver.best_move(words, workers=2)
+                    helpers.close_memo_store()
+                self.assertEqual(profile.worker_processes, 2)
+
+                helpers._BEST_MOVE_CACHE.clear()
+                with patch.object(
+                    partition_functions,
+                    "DATASET_PATH",
+                    serial_path,
+                ):
+                    serial_result = solver.best_move(words)
+
+                self.assertEqual(parallel_result, serial_result)
+            finally:
+                helpers.close_memo_store()
+                helpers._BEST_MOVE_CACHE.clear()
                 key = partition_functions._words_key(words)
                 matrix = partition_functions._FEEDBACK_MATRIX_CACHE.pop(
                     key,

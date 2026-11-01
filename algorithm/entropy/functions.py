@@ -8,7 +8,7 @@ import json
 from pathlib import Path
 import sqlite3
 from time import perf_counter
-from typing import Generator
+from typing import Callable, Generator
 
 import numpy as np
 
@@ -561,6 +561,10 @@ def _best_move(
     candidates: list[str],
     depth: int,
     context: _SearchContext,
+    parallel_evaluator: Callable[
+        [list[str], list[int], int, _SearchContext],
+        tuple[int, float],
+    ] | None = None,
 ) -> tuple[int, float]:
     _, _, _, word_key = context
     if _MEMO_CONNECTION is None:
@@ -605,21 +609,29 @@ def _best_move(
         if _PROFILE is not None:
             _PROFILE.ranking_calls += 1
             _PROFILE.ranking_seconds += perf_counter() - ranking_started
-        for guess_index in ranked_guesses:
-            evaluation_started = perf_counter()
-            cost = _evaluate_guess(
-                guess_index,
+        if parallel_evaluator is not None:
+            best_guess, best_cost = parallel_evaluator(
                 candidates,
-                best_cost,
+                ranked_guesses,
                 depth,
                 context,
             )
-            if _PROFILE is not None:
-                _PROFILE.guess_evaluations += 1
-                _PROFILE.evaluation_seconds += perf_counter() - evaluation_started
-            if cost < best_cost:
-                best_guess = guess_index
-                best_cost = cost
+        else:
+            for guess_index in ranked_guesses:
+                evaluation_started = perf_counter()
+                cost = _evaluate_guess(
+                    guess_index,
+                    candidates,
+                    best_cost,
+                    depth,
+                    context,
+                )
+                if _PROFILE is not None:
+                    _PROFILE.guess_evaluations += 1
+                    _PROFILE.evaluation_seconds += perf_counter() - evaluation_started
+                if cost < best_cost:
+                    best_guess = guess_index
+                    best_cost = cost
         if best_guess < 0:
             raise RuntimeError("No guess produced a valid partition.")
         result = best_guess, best_cost

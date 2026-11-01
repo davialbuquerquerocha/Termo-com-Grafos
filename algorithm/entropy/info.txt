@@ -43,10 +43,17 @@ serial); escolha a quantidade com --workers:
     python -c "from algorithm.entropy.algorithm import main; main()" evaluate --strategy groups --workers 4 --profile
 
 O paralelismo distribui as respostas avaliadas entre processos; a busca do
-primeiro palpite de groups continua no processo principal. O desempenho depende
-da CPU e do tamanho da amostra. Cada worker usa seu proprio arquivo
-entropy_memo_worker_*.sqlite3 para evitar concorrencia de escrita; os resultados
-por resposta continuam no banco principal e podem ser retomados normalmente.
+primeiro palpite de groups tambem distribui candidatos entre esses processos.
+As duas etapas usam os mesmos nucleos em momentos diferentes, sem criar pools
+aninhados; dentro de cada candidato avaliado, a recursao continua serial. O
+desempenho depende da CPU e do tamanho da amostra. Cada worker usa seu proprio
+arquivo entropy_memo_worker_*.sqlite3 para evitar concorrencia de escrita; os
+resultados por resposta continuam no banco principal e podem ser retomados
+normalmente.
+Durante a preparacao da matriz e a busca inicial, o programa informa a fase
+atual e imprime um aviso periodico a cada 10 segundos enquanto uma etapa longa
+ainda esta sendo calculada. Na busca paralela, tambem informa quantos palpites
+ja terminaram.
 
 Teste uma amostra deterministica antes da avaliacao completa. A amostra limita
 as respostas avaliadas, mas o solver continua usando toda a lista aceita como
@@ -60,7 +67,7 @@ Opcoes de avaliacao:
 - --sample-size N: avalia N respostas sorteadas da lista aceita.
 - --seed N: define a semente da amostra; o padrao e 2026.
 - --checkpoint-interval N: grava resultados a cada N respostas; o padrao e 100.
-- --workers N: numero de processos para avaliar respostas; o padrao e 1.
+- --workers N: numero maximo de processos para busca groups e avaliacao; o padrao e 1.
 - --profile: mostra tempos e contagens de operacoes da busca.
 - --no-resume: ignora resultados salvos para a selecao atual e recalcula a
   amostra selecionada.

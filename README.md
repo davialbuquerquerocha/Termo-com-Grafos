@@ -47,8 +47,10 @@ Os solvers ficam organizados em pacotes separados:
   de gravação, `--no-resume` recalcula a amostra selecionada e `--workers 4`
   avalia respostas em quatro processos da CPU (o padrão é serial). Cada worker
   usa um SQLite separado para o memo da busca; os resultados por resposta ficam
-  no banco principal. A busca pelo primeiro palpite `groups` continua serial.
-  Os caches em memória usam LRU limitado; os estados finalizados da busca são
+  no banco principal. Em `groups`, a busca do primeiro palpite também distribui
+  candidatos entre os workers antes de avaliar as respostas; a recursão dentro
+  de cada candidato continua serial e as etapas não criam pools aninhados. Os
+  caches em memória usam LRU limitado; os estados finalizados da busca são
   gravados no SQLite a cada 1.000 estados.
   Cada avaliação também salva em `dataset/` um JSON com a resposta, cada
   palpite e o feedback observado naquele jogo, atualizado a cada checkpoint.
