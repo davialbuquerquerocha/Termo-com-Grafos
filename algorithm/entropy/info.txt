@@ -1,0 +1,79 @@
+SOLVER DE ENTROPIA - GUIA RAPIDO
+================================
+
+Este pacote oferece dois modos de escolha de palpite:
+
+- entropy: calcula a entropia dos palpites e escolhe o mais informativo.
+- groups: avalia recursivamente os grupos de feedback para minimizar o custo
+  esperado. deep e um alias mantido para compatibilidade.
+
+Todos os comandos abaixo devem ser executados na raiz do projeto:
+
+    cd "C:\Users\arthu\OneDrive\Desktop\Termo\Termo-com-Grafos"
+
+JOGAR INTERATIVAMENTE
+---------------------
+
+Entropia comum:
+
+    python -c "from algorithm.entropy.algorithm import main; main()" play --strategy entropy
+
+Busca recursiva dos grupos:
+
+    python -c "from algorithm.entropy.algorithm import main; main()" play --strategy groups
+
+SIMULAR UMA RESPOSTA
+--------------------
+
+    python -c "from algorithm.entropy.algorithm import main; main()" simulate TERMO --strategy entropy
+    python -c "from algorithm.entropy.algorithm import main; main()" simulate TERMO --strategy groups
+
+AVALIAR RESPOSTAS
+-----------------
+
+Avaliacao completa de todas as palavras aceitas (pode demorar):
+
+    python -c "from algorithm.entropy.algorithm import main; main()" evaluate --strategy entropy
+    python -c "from algorithm.entropy.algorithm import main; main()" evaluate --strategy groups
+
+Teste uma amostra deterministica antes da avaliacao completa. A amostra limita
+as respostas avaliadas, mas o solver continua usando toda a lista aceita como
+vocabulario de palpites:
+
+    python -c "from algorithm.entropy.algorithm import main; main()" evaluate --strategy entropy --sample-size 2000 --seed 2026 --profile
+    python -c "from algorithm.entropy.algorithm import main; main()" evaluate --strategy groups --sample-size 200 --seed 2026 --profile
+
+Opcoes de avaliacao:
+
+- --sample-size N: avalia N respostas sorteadas da lista aceita.
+- --seed N: define a semente da amostra; o padrao e 2026.
+- --checkpoint-interval N: grava resultados a cada N respostas; o padrao e 100.
+- --profile: mostra tempos e contagens de operacoes da busca.
+- --no-resume: ignora resultados salvos para a selecao atual e recalcula a
+  amostra selecionada.
+
+RETOMADA E ARQUIVOS
+-------------------
+
+- dataset\entropy_memo.sqlite3 guarda estados resolvidos da busca groups e os
+  resultados de avaliacao por resposta. Execucoes seguintes reutilizam esses
+  dados quando a lista, a estrategia e a configuracao forem compativeis.
+- dataset\entropy_first_guess.json guarda o primeiro palpite calculado para a
+  busca groups.
+- dataset\feedback_matrix_*.npy guarda a matriz de feedback pre-calculada.
+
+Os arquivos SQLite e seus auxiliares sao ignorados pelo Git. Nao apague o banco
+se quiser retomar uma execucao interrompida. Para recalcular resultados de uma
+amostra, use --no-resume.
+
+IMPORTACAO EM PYTHON
+--------------------
+
+    from algorithm.entropy import evaluate_solver, interactive_play
+
+    interactive_play(strategy="entropy")
+    result = evaluate_solver("groups")
+    print(result.average_attempts)
+
+strategy aceita "entropy", "groups" ou "deep". A avaliacao completa nao e
+executada automaticamente ao importar o pacote.

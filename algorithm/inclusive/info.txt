@@ -1,0 +1,53 @@
+SOLVER INCLUSIVO - GUIA RAPIDO
+==============================
+
+O solver inclusivo escolhe palpites por uma funcao de palavras fornecida pelo
+usuario. Depois de cada tentativa, calcula o feedback exato e filtra a lista
+de candidatas. A resposta precisa estar nessa lista.
+
+O pacote nao tem uma CLI propria. Execute os exemplos abaixo a partir da raiz
+do projeto:
+
+    cd "C:\Users\arthu\OneDrive\Desktop\Termo\Termo-com-Grafos"
+
+USO EM PYTHON
+-------------
+
+Escolher a palavra com a maior pontuacao baseada na frequencia das letras em
+cada posicao:
+
+    from algorithm import functions as common
+    from algorithm.inclusive import inclusive_algorithm, functions as heuristics
+
+    words = common.file_to_list("dataset/termo_palavras_aceitas.txt")
+    attempts = inclusive_algorithm(
+        words,
+        "TERMO",
+        heuristics.find_best_word_by_letter_position,
+    )
+    print(f"Resolvido em {attempts} tentativas")
+
+Outra heuristica disponivel soma a frequencia geral das letras:
+
+    heuristics.find_best_word_by_letter_frequency
+
+As duas heuristicas aceitam allow_repeated_letters=False por padrao. Passe
+True para permitir palavras com letras repetidas quando escolher o palpite.
+O solver recebe a heuristica como word_function e chama-a com a lista atual de
+candidatas.
+
+CONTROLE DE SAIDA
+-----------------
+
+Por padrao, inclusive_algorithm mostra cada palpite e as candidatas restantes.
+Use show_progress=False para executar sem esse detalhamento:
+
+    attempts = inclusive_algorithm(
+        words,
+        "TERMO",
+        heuristics.find_best_word_by_letter_position,
+        show_progress=False,
+    )
+
+Se a resposta nao estiver na lista, o solver levanta ValueError. Se um filtro
+nao encontrar candidatas consistentes com o feedback, levanta RuntimeError.

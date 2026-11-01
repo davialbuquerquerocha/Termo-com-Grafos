@@ -1,0 +1,49 @@
+BUSCA EVOLUTIVA DE PESOS - GUIA RAPIDO
+=======================================
+
+Este algoritmo ajusta tres pesos usados para classificar letras por frequencia
+e posicao. Compara os jogos de todas as respostas aceitas e tenta reduzir
+primeiro a quantidade de jogos que excede MAX_GUESSES; em seguida, reduz a
+media de tentativas.
+
+EXECUCAO
+--------
+
+Na raiz do projeto, rode:
+
+    python algorithm\evo_search\evo_search.py
+
+Por padrao, o treino usa dataset\palavras_aceitas500.txt. Para usar outra lista
+de palavras aceitas, informe o caminho como argumento:
+
+    python algorithm\evo_search\evo_search.py dataset\palavras_aceitas100.txt
+
+O programa faz uma busca em grade inicial quando GRID_SEARCH esta ativo e
+depois executa a estrategia evolutiva (ES). As avaliacoes usam
+PARALLEL_WORKERS processos por padrao. O treino pode ser demorado; nao existe
+opcao de CLI para limitar iteracoes ou processos.
+
+ARQUIVOS
+--------
+
+- pesos.csv: tres pesos iniciais; o arquivo e atualizado quando uma melhora e
+  encontrada e novamente ao final do treino.
+- training_log.csv: historico das propostas avaliadas; e sobrescrito a cada
+  novo treino.
+- dataset\letters_position.csv: contagens usadas para construir as estatisticas
+  de letras e posicoes.
+- dataset\palavras_aceitas500.txt: lista padrao de respostas e palpites.
+
+Os parametros ativos, incluindo MAX_ITERATIONS, PATIENCE, GRID_SEARCH,
+MAX_GUESSES e PARALLEL_WORKERS, estao declarados no inicio de evo_search.py.
+PARAMETERS.txt e um arquivo informativo separado; editar esse TXT, sozinho, nao
+altera os valores usados pelo programa.
+
+USO DAS FUNCOES
+---------------
+
+O modulo carrega pesos, contagens e a lista padrao durante a importacao. Para
+executar o treino completo, prefira o comando acima. As funcoes principais
+incluem wordle_game para simular uma resposta, classify_algorithm para resumir
+o desempenho de um conjunto de respostas e train para iniciar o ajuste dos
+pesos.
