@@ -1,0 +1,52 @@
+SOLVER POR PARTICOES - GUIA RAPIDO
+===================================
+
+O solver por particoes pre-calcula o feedback para os pares palpite/resposta
+e escolhe a tentativa que minimiza a soma dos quadrados dos tamanhos dos grupos.
+Em caso de empate, prioriza uma candidata e depois a ordem da lista.
+
+USO EM PYTHON
+-------------
+
+Execute o exemplo a partir da raiz do projeto:
+
+    cd "C:\Users\arthu\OneDrive\Desktop\Termo\Termo-com-Grafos"
+
+    from algorithm import functions as common
+    from algorithm.partition import partition_algorithm
+
+    words = common.file_to_list("dataset/termo_palavras_aceitas.txt")
+    attempts = partition_algorithm(
+        words,
+        "TERMO",
+        lambda candidates: candidates[0],
+        show_progress=True,
+    )
+    print(f"Resolvido em {attempts} tentativas")
+
+O parametro word_function e mantido para compatibilidade, mas e ignorado pelo
+solver de particoes. A resposta precisa estar em words.
+
+MATRIZ DE FEEDBACK
+------------------
+
+A primeira chamada constroi a matriz NumPy; as chamadas seguintes reutilizam o
+arquivo em dataset/feedback_matrix_*.npy correspondente a lista de palavras.
+A matriz e validada por amostragem contra a funcao de pontuacao do jogo.
+
+AVALIACAO EM LOTE
+-----------------
+
+Para executar o fluxo de lote existente para todas as palavras aceitas:
+
+    python main.py
+
+Esse comando calcula os palpites alternativos dos ramos ambiguos antes de
+distribuir as respostas por processos. Pode demorar e usa por padrao os
+processadores logicos disponiveis. O resultado e gravado em:
+
+    dataset/resultados_partition_busca_limitada.csv
+
+O CSV contem answer, algorithm, word_function, attempts e solved. Para mudar
+o numero de processos ou processar uma amostra, chame run_all_answers em
+main.py passando a lista desejada, o caminho de saida e max_workers.

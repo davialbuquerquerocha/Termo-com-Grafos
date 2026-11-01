@@ -1,0 +1,558 @@
+from pathlib import Path
+from contextlib import redirect_stdout
+import io
+import random
+import tempfile
+import unittest
+from unittest.mock import patch
+
+import numpy as np
+
+import algorithm.entropy as entropy_package
+from algorithm.entropy import algorithm as solver
+from algorithm.entropy import functions as helpers
+from algorithm.partition import functions as partition_functions
+
+
+class EntropyAlgorithmTests(unittest.TestCase):
+    def test_entropy_package_exports_both_strategies(self) -> None:
+        self.assertIs(entropy_package.interactive_play, solver.interactive_play)
+        self.assertIs(entropy_package.entropy, helpers.entropy)
+        self.assertEqual(solver._validate_strategy("entropy"), "entropy")
+        self.assertEqual(solver._validate_strategy("groups"), "deep")
+        self.assertEqual(solver._validate_strategy("deep"), "deep")
+
+        with self.assertRaises(ValueError):
+            solver._validate_strategy("unknown")
+
+    def test_rank_state_applies_k_to_all_guesses_but_keeps_exhaustive_oov(self) -> None:
+        words = ["AAAAA", "BBBBB", "CCCCC", "DDDDD", "EEEEE"]
+        context = (
+            words,
+            {word: index for index, word in enumerate(words)},
+            np.asarray(
+                [
+                    [242, 0, 0, 0, 0],
+                    [0, 242, 0, 0, 0],
+                    [0, 0, 242, 0, 0],
+                    [0, 0, 0, 242, 0],
+                    [0, 0, 0, 0, 242],
+                ],
+                dtype=np.uint8,
+            ),
+            "test",
+        )
+        original_settings = (
+            helpers.EXHAUSTIVE_LIMIT,
+            helpers.BUDGET,
+            helpers.FACTOR,
+            helpers.MIN_K,
+            helpers.ENTROPY_MARGIN,
+        )
+
+        with tempfile.TemporaryDirectory() as directory:
+            word_list_path = Path(directory) / "words.txt"
+            word_list_path.write_text("\n".join(words[:4]), encoding="utf-8")
+            try:
+                with patch.object(
+                    partition_functions,
+                    "DATASET_PATH",
+                    word_list_path,
+                ):
+                    helpers._guess_count.cache_clear()
+                    helpers.EXHAUSTIVE_LIMIT = 1
+                    helpers.BUDGET = 1
+                    helpers.FACTOR = 4
+                    helpers.MIN_K = 2
+                    helpers.ENTROPY_MARGIN = 100.0
+                    bounded = helpers._rank_state(words[:4], 0, context)
+                    self.assertEqual(len(bounded), 2)
+
+                    helpers.EXHAUSTIVE_LIMIT = 4
+                    exhaustive = helpers._rank_state(
+                        [*words[:3], words[4]],
+                        0,
+                        context,
+                    )
+                    self.assertEqual(set(exhaustive), set(range(len(words))))
+            finally:
+                helpers._guess_count.cache_clear()
+                (
+                    helpers.EXHAUSTIVE_LIMIT,
+                    helpers.BUDGET,
+                    helpers.FACTOR,
+                    helpers.MIN_K,
+                    helpers.ENTROPY_MARGIN,
+                ) = original_settings
+
+    def test_best_move_forwards_search_depth(self) -> None:
+        words = ["AAAAA", "BBBBB"]
+        context = (
+            words,
+            {word: index for index, word in enumerate(words)},
+            np.zeros((2, 2), dtype=np.uint8),
+            "test",
+        )
+        with (
+            patch.object(solver, "_search_context", return_value=context),
+            patch.object(helpers, "_best_move", return_value=(1, 1.5)) as best_move,
+        ):
+            result = solver.best_move(words, depth=3)
+
+        self.assertEqual(result, (1, 1.5))
+        best_move.assert_called_once_with(words, 3, context)
+
+    def test_simulation_increments_search_depth_after_each_guess(self) -> None:
+        words = ["AAAAA", "BBBBB"]
+        context = (
+            words,
+            {word: index for index, word in enumerate(words)},
+            np.asarray([[242, 0], [0, 242]], dtype=np.uint8),
+            "test",
+        )
+        with (
+            patch.object(solver, "_load_answers", return_value=words),
+            patch.object(solver, "_search_context", return_value=context),
+            patch.object(solver, "choose_first_guess", return_value=(0, 1.5)),
+            patch.object(solver, "_choose_guess_with_context", return_value=1) as choose_guess,
+        ):
+            attempts = solver.simulate_game("BBBBB", "deep")
+
+        self.assertEqual(attempts, 2)
+        choose_guess.assert_called_once_with(["BBBBB"], "deep", 1, context)
+
+    def test_memo_key_changes_when_search_settings_change(self) -> None:
+        words = ["AAAAA", "BBBBB", "CCCCC"]
+        matrix = np.asarray(
+            [
+                [242, 0, 0],
+                [0, 242, 0],
+                [0, 0, 242],
+            ],
+            dtype=np.uint8,
+        )
+        context = (
+            words,
+            {word: index for index, word in enumerate(words)},
+            matrix,
+            "test",
+        )
+        original_settings = (
+            helpers.EXHAUSTIVE_LIMIT,
+            helpers.BUDGET,
+            helpers.FACTOR,
+            helpers.MIN_K,
+            helpers.ENTROPY_MARGIN,
+        )
+
+        with tempfile.TemporaryDirectory() as directory:
+            word_list_path = Path(directory) / "words.txt"
+            word_list_path.write_text("\n".join(words), encoding="utf-8")
+            try:
+                with patch.object(
+                    partition_functions,
+                    "DATASET_PATH",
+                    word_list_path,
+                ):
+                    helpers._guess_count.cache_clear()
+                    helpers._BEST_MOVE_CACHE.clear()
+                    helpers.EXHAUSTIVE_LIMIT = 3
+                    helpers.BUDGET = 100
+                    helpers.FACTOR = 4
+                    helpers.MIN_K = 1
+                    helpers.ENTROPY_MARGIN = 100.0
+                    helpers.configure_memo_store(
+                        Path(directory) / "memo.sqlite3",
+                        "test",
+                    )
+                    helpers._best_move(words, 0, context)
+                    initial_config = helpers._search_config_key()
+                    initial_database_rows = helpers.memo_store_stats()[
+                        "database_rows"
+                    ]
+
+                    helpers.BUDGET = 101
+                    helpers._best_move(words, 0, context)
+
+                    self.assertTrue(helpers._BEST_MOVE_CACHE)
+                    self.assertTrue(
+                        all(
+                            key[2:8] == helpers._search_config_key()
+                            for key in helpers._BEST_MOVE_CACHE
+                        )
+                    )
+                    self.assertNotEqual(
+                        initial_config,
+                        helpers._search_config_key(),
+                    )
+                    self.assertEqual(
+                        helpers.memo_store_stats()["database_rows"],
+                        initial_database_rows,
+                    )
+                    stored_config_count = helpers._require_memo_connection().execute(
+                        "SELECT COUNT(DISTINCT config_key) FROM best_moves"
+                    ).fetchone()[0]
+                    self.assertEqual(stored_config_count, 1)
+            finally:
+                helpers.close_memo_store()
+                helpers._guess_count.cache_clear()
+                helpers._BEST_MOVE_CACHE.clear()
+                (
+                    helpers.EXHAUSTIVE_LIMIT,
+                    helpers.BUDGET,
+                    helpers.FACTOR,
+                    helpers.MIN_K,
+                    helpers.ENTROPY_MARGIN,
+                ) = original_settings
+
+    def test_best_move_discards_memos_from_other_search_settings(self) -> None:
+        words = ["AAAAA"]
+        context = (
+            words,
+            {words[0]: 0},
+            np.asarray([[242]], dtype=np.uint8),
+            "test",
+        )
+        original_settings = (
+            helpers.EXHAUSTIVE_LIMIT,
+            helpers.BUDGET,
+            helpers.FACTOR,
+            helpers.MIN_K,
+            helpers.ENTROPY_MARGIN,
+        )
+        original_cache_config = helpers._BEST_MOVE_CACHE_CONFIG
+
+        try:
+            with tempfile.TemporaryDirectory() as directory:
+                helpers.configure_memo_store(
+                    Path(directory) / "memo.sqlite3",
+                    "test",
+                )
+                state_bytes = np.asarray([0], dtype=np.uint32).tobytes()
+                current_key = (
+                    "test",
+                    0,
+                    *helpers._search_config_key(),
+                    state_bytes,
+                )
+                stale_config = (
+                    helpers.EXHAUSTIVE_LIMIT,
+                    helpers.BUDGET + 1,
+                    helpers.FACTOR,
+                    helpers.MIN_K,
+                    helpers.ENTROPY_MARGIN,
+                    helpers.SEARCH_ALGORITHM_VERSION,
+                )
+                stale_key = ("stale", 0, *stale_config, state_bytes)
+                helpers._BEST_MOVE_CACHE[current_key] = (0, 1.0)
+                helpers._BEST_MOVE_CACHE[stale_key] = (0, 1.0)
+                helpers._BEST_MOVE_CACHE_CONFIG = None
+                result = helpers._best_move(words, 0, context)
+                helpers.close_memo_store()
+
+            self.assertEqual(result, (0, 1.0))
+            self.assertIn(current_key, helpers._BEST_MOVE_CACHE)
+            self.assertNotIn(stale_key, helpers._BEST_MOVE_CACHE)
+        finally:
+            helpers._BEST_MOVE_CACHE.clear()
+            helpers._BEST_MOVE_CACHE_CONFIG = original_cache_config
+            (
+                helpers.EXHAUSTIVE_LIMIT,
+                helpers.BUDGET,
+                helpers.FACTOR,
+                helpers.MIN_K,
+                helpers.ENTROPY_MARGIN,
+            ) = original_settings
+
+    def test_pruned_infinite_guess_cost_is_not_memoized(self) -> None:
+        words = ["AAAAA", "BBBBB", "CCCCC"]
+        context = (
+            words,
+            {word: index for index, word in enumerate(words)},
+            np.asarray(
+                [
+                    [242, 0, 0],
+                    [0, 242, 0],
+                    [0, 0, 242],
+                ],
+                dtype=np.uint8,
+            ),
+            "test",
+        )
+        original_settings = (
+            helpers.EXHAUSTIVE_LIMIT,
+            helpers.BUDGET,
+            helpers.FACTOR,
+            helpers.MIN_K,
+            helpers.ENTROPY_MARGIN,
+        )
+
+        with tempfile.TemporaryDirectory() as directory:
+            word_list_path = Path(directory) / "words.txt"
+            word_list_path.write_text("\n".join(words), encoding="utf-8")
+            try:
+                with patch.object(
+                    partition_functions,
+                    "DATASET_PATH",
+                    word_list_path,
+                ):
+                    helpers._guess_count.cache_clear()
+                    helpers._BEST_MOVE_CACHE.clear()
+                    helpers.EXHAUSTIVE_LIMIT = 3
+                    helpers.BUDGET = 100
+                    helpers.FACTOR = 4
+                    helpers.MIN_K = 1
+                    helpers.ENTROPY_MARGIN = 100.0
+                    helpers.configure_memo_store(
+                        Path(directory) / "memo.sqlite3",
+                        "test",
+                    )
+                    state_key = (
+                        "test",
+                        0,
+                        *helpers._search_config_key(),
+                        np.asarray([0, 1, 2], dtype=np.uint32).tobytes(),
+                    )
+
+                    cost = helpers._evaluate_guess(
+                        0,
+                        words,
+                        1.0,
+                        0,
+                        context,
+                    )
+
+                    self.assertEqual(cost, float("inf"))
+                    self.assertNotIn(state_key, helpers._BEST_MOVE_CACHE)
+                    self.assertTrue(
+                        all(
+                            cached_cost < float("inf")
+                            for _, cached_cost in helpers._BEST_MOVE_CACHE.values()
+                        )
+                    )
+            finally:
+                helpers.close_memo_store()
+                helpers._guess_count.cache_clear()
+                helpers._BEST_MOVE_CACHE.clear()
+                (
+                    helpers.EXHAUSTIVE_LIMIT,
+                    helpers.BUDGET,
+                    helpers.FACTOR,
+                    helpers.MIN_K,
+                    helpers.ENTROPY_MARGIN,
+                ) = original_settings
+
+    def test_best_move_memo_persists_and_reloads_from_sqlite(self) -> None:
+        words = ["AAAAA"]
+        context = (
+            words,
+            {words[0]: 0},
+            np.asarray([[242]], dtype=np.uint8),
+            "test",
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            database_path = Path(directory) / "memo.sqlite3"
+            helpers.configure_memo_store(database_path, "test")
+            first_result = helpers._best_move(words, 0, context)
+            self.assertEqual(first_result, (0, 1.0))
+            self.assertEqual(helpers.memo_store_stats()["database_rows"], 1)
+
+            helpers._BEST_MOVE_CACHE.clear()
+            helpers.close_memo_store()
+            helpers.configure_memo_store(database_path, "test")
+            with helpers.profile_search() as profile:
+                resumed_result = helpers._best_move(words, 0, context)
+
+            self.assertEqual(resumed_result, first_result)
+            self.assertEqual(profile.states_computed, 0)
+            self.assertEqual(profile.memo_hits, 1)
+            helpers.close_memo_store()
+
+    def test_evaluate_solver_resumes_answer_results_and_reuses_context(self) -> None:
+        words = ["AAAAA", "BBBBB", "CCCCC"]
+        context = (
+            words,
+            {word: index for index, word in enumerate(words)},
+            np.asarray(
+                [
+                    [242, 0, 0],
+                    [0, 242, 0],
+                    [0, 0, 242],
+                ],
+                dtype=np.uint8,
+            ),
+            "test",
+        )
+        attempt_counts = {"AAAAA": 1, "BBBBB": 2, "CCCCC": 3}
+
+        with tempfile.TemporaryDirectory() as directory:
+            helpers.configure_memo_store(
+                Path(directory) / "memo.sqlite3",
+                "test",
+            )
+            try:
+                with (
+                    patch.object(solver, "_load_answers", return_value=words),
+                    patch.object(
+                        solver,
+                        "_search_context",
+                        return_value=context,
+                    ) as search_context,
+                    patch.object(
+                        solver,
+                        "_simulate_game_with_context",
+                        side_effect=lambda answer, all_answers, strategy, current_context, initial_guess: (
+                            attempt_counts[answer]
+                            if answer in all_answers
+                            and strategy == "entropy"
+                            and current_context is context
+                            and initial_guess is None
+                            else 0
+                        ),
+                    ) as simulate,
+                    redirect_stdout(io.StringIO()),
+                ):
+                    first_evaluation = solver.evaluate_solver(
+                        answers=words,
+                        checkpoint_interval=1,
+                    )
+                    self.assertEqual(simulate.call_count, len(words))
+                    search_context.assert_called_once()
+
+                    simulate.reset_mock()
+                    search_context.reset_mock()
+                    resumed_evaluation = solver.evaluate_solver(
+                        answers=words,
+                        checkpoint_interval=1,
+                    )
+
+                self.assertEqual(first_evaluation, resumed_evaluation)
+                self.assertEqual(simulate.call_count, 0)
+                search_context.assert_called_once()
+                self.assertEqual(first_evaluation.total_games, len(words))
+                self.assertEqual(first_evaluation.distribution, {1: 1, 2: 1, 3: 1})
+            finally:
+                helpers.close_memo_store()
+
+    def test_in_memory_memo_respects_configured_size_limit(self) -> None:
+        original_limit = helpers.MEMO_MEMORY_LIMIT
+        original_cache = helpers._BEST_MOVE_CACHE.copy()
+        try:
+            helpers._BEST_MOVE_CACHE.clear()
+            helpers.MEMO_MEMORY_LIMIT = 2
+            config = helpers._search_config_key()
+            for index in range(3):
+                state_key = (
+                    "test",
+                    0,
+                    *config,
+                    np.asarray([index], dtype=np.uint32).tobytes(),
+                )
+                helpers._remember_state(state_key, (index, 1.0))
+
+            self.assertEqual(len(helpers._BEST_MOVE_CACHE), 2)
+            self.assertEqual(
+                [key[-1] for key in helpers._BEST_MOVE_CACHE],
+                [
+                    np.asarray([1], dtype=np.uint32).tobytes(),
+                    np.asarray([2], dtype=np.uint32).tobytes(),
+                ],
+            )
+        finally:
+            helpers._BEST_MOVE_CACHE.clear()
+            helpers._BEST_MOVE_CACHE.update(original_cache)
+            helpers.MEMO_MEMORY_LIMIT = original_limit
+
+    def test_deep_cost_matches_evaluation_on_seeded_word_sample(self) -> None:
+        original_path = partition_functions.DATASET_PATH
+        original_settings = (
+            helpers.EXHAUSTIVE_LIMIT,
+            helpers.BUDGET,
+            helpers.FACTOR,
+            helpers.MIN_K,
+            helpers.ENTROPY_MARGIN,
+        )
+        source_words = solver._load_answers()
+        words = random.Random(7341).sample(source_words, 18)
+
+        with tempfile.TemporaryDirectory() as directory:
+            word_list_path = Path(directory) / "answers.txt"
+            word_list_path.write_text("\n".join(words), encoding="utf-8")
+            try:
+                with patch.object(
+                    partition_functions,
+                    "DATASET_PATH",
+                    word_list_path,
+                ):
+                    helpers.EXHAUSTIVE_LIMIT = 30
+                    helpers.BUDGET = 1_000_000
+                    helpers.FACTOR = 4
+                    helpers.MIN_K = 5
+                    helpers.ENTROPY_MARGIN = 1.0
+                    guess_index, expected_cost = solver.best_move(words)
+                    result = solver.evaluate_solver(
+                        "groups",
+                        checkpoint_interval=5,
+                    )
+
+                    self.assertGreaterEqual(guess_index, 0)
+                    self.assertAlmostEqual(
+                        expected_cost,
+                        result.average_attempts,
+                    )
+                    self.assertEqual(result.total_games, len(words))
+
+                    helpers.EXHAUSTIVE_LIMIT = 5
+                    helpers.BUDGET = 20
+                    helpers.MIN_K = 1
+                    bounded_guess, bounded_cost = solver.best_move(words)
+                    bounded_result = solver.evaluate_solver(
+                        "groups",
+                        resume=False,
+                        checkpoint_interval=6,
+                    )
+
+                    self.assertGreaterEqual(bounded_guess, 0)
+                    self.assertGreaterEqual(
+                        bounded_cost + 1e-12,
+                        expected_cost,
+                    )
+                    self.assertAlmostEqual(
+                        bounded_cost,
+                        bounded_result.average_attempts,
+                    )
+            finally:
+                helpers.close_memo_store()
+                key = partition_functions._words_key(words)
+                matrix = partition_functions._FEEDBACK_MATRIX_CACHE.pop(
+                    key,
+                    None,
+                )
+                if matrix is not None and getattr(matrix, "_mmap", None) is not None:
+                    matrix._mmap.close()
+                partition_functions._WORD_INDEX_CACHE.pop(key, None)
+                partition_functions._MATRIX_VALIDATED.discard(key)
+                helpers._BEST_MOVE_CACHE.clear()
+                helpers._guess_count.cache_clear()
+                for matrix_path in word_list_path.parent.glob("feedback_matrix_*.npy"):
+                    matrix_path.unlink()
+                first_guess_path = word_list_path.with_name(
+                    "entropy_first_guess.json"
+                )
+                if first_guess_path.exists():
+                    first_guess_path.unlink()
+                database_path = word_list_path.with_name("entropy_memo.sqlite3")
+                if database_path.exists():
+                    database_path.unlink()
+                partition_functions.DATASET_PATH = original_path
+                (
+                    helpers.EXHAUSTIVE_LIMIT,
+                    helpers.BUDGET,
+                    helpers.FACTOR,
+                    helpers.MIN_K,
+                    helpers.ENTROPY_MARGIN,
+                ) = original_settings
+
+
+if __name__ == "__main__":
+    unittest.main()
