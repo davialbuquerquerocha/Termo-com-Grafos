@@ -17,24 +17,31 @@ JOGAR INTERATIVAMENTE
 Entropia comum:
 
     python -c "from algorithm.entropy.algorithm import main; main()" play --strategy entropy
+    python -c "from algorithm.entropy.algorithm import main; main()" play --strategy entropy --answer-list solutions
 
 Busca recursiva dos grupos:
 
     python -c "from algorithm.entropy.algorithm import main; main()" play --strategy groups
+    python -c "from algorithm.entropy.algorithm import main; main()" play --strategy groups --answer-list solutions
+    python -c "from algorithm.entropy.algorithm import main; main()" play --strategy groups --max-k 100
 
 SIMULAR UMA RESPOSTA
 --------------------
 
     python -c "from algorithm.entropy.algorithm import main; main()" simulate TERMO --strategy entropy
     python -c "from algorithm.entropy.algorithm import main; main()" simulate TERMO --strategy groups
+    python -c "from algorithm.entropy.algorithm import main; main()" simulate TERMO --strategy groups --answer-list solutions
 
 AVALIAR RESPOSTAS
 -----------------
 
-Avaliacao completa de todas as palavras aceitas (pode demorar):
+Avaliacao completa das respostas possiveis (pode demorar). Por padrao,
+usa termo_palavras_aceitas.txt; --answer-list solutions seleciona
+termo_solucoes_possiveis.txt:
 
-    python -c "from algorithm.entropy.algorithm import main; main()" evaluate --strategy entropy
-    python -c "from algorithm.entropy.algorithm import main; main()" evaluate --strategy groups
+    python -c "from algorithm.entropy.algorithm import main; main()" evaluate --strategy entropy --answer-list accepted
+    python -c "from algorithm.entropy.algorithm import main; main()" evaluate --strategy groups --answer-list solutions
+    python -c "from algorithm.entropy.algorithm import main; main()" evaluate --strategy groups --answer-list solutions --max-k 100
 
 A avaliacao pode usar varios processos da CPU. O padrao e um worker (execucao
 serial); escolha a quantidade com --workers:
@@ -63,18 +70,27 @@ pode significar que os palpites considerados nao bastaram, nao que seja
 impossivel resolver em seis usando qualquer palavra do vocabulario.
 
 Teste uma amostra deterministica antes da avaliacao completa. A amostra limita
-as respostas avaliadas, mas o solver continua usando toda a lista aceita como
-vocabulario de palpites:
+as respostas da lista selecionada; o solver continua usando toda a lista aceita
+como vocabulario de palpites:
 
     python -c "from algorithm.entropy.algorithm import main; main()" evaluate --strategy entropy --sample-size 2000 --seed 2026 --profile
     python -c "from algorithm.entropy.algorithm import main; main()" evaluate --strategy groups --sample-size 200 --seed 2026 --profile
 
 Opcoes de avaliacao:
 
-- --sample-size N: avalia N respostas sorteadas da lista aceita.
+- --sample-size N: avalia N respostas sorteadas da lista selecionada.
+- --answer-list accepted|solutions: escolhe as respostas possiveis entre
+  termo_palavras_aceitas.txt (padrao) e termo_solucoes_possiveis.txt. O
+  vocabulario de palpites continua sendo termo_palavras_aceitas.txt. Acentos
+  sao ignorados na comparacao de feedback, mas a grafia original e preservada
+  nos resultados.
 - --seed N: define a semente da amostra; o padrao e 2026.
 - --checkpoint-interval N: grava resultados a cada N respostas; o padrao e 100.
 - --workers N: numero maximo de processos para busca groups e avaliacao; o padrao e 1.
+- --max-k N: limita a quantidade maxima de palpites candidatos avaliados em
+  cada estado da busca groups. Deve ser maior que zero; sem a opcao, o solver
+  mantem a selecao automatica atual. Um limite menor pode acelerar a busca,
+  mas tambem pode excluir o palpite que levaria a melhor solucao.
 - --profile: mostra tempos e contagens de operacoes da busca.
 - --no-resume: ignora resultados salvos para a selecao atual e recalcula a
   amostra selecionada.
@@ -92,8 +108,14 @@ RETOMADA E ARQUIVOS
   atualizadas a cada checkpoint. Ao concluir, o JSON inclui tambem as metricas
   agregadas. Uma execucao interrompida deixa o JSON marcado como incompleto;
   jogos antigos sem sequencia sao simulados novamente ao retomar.
-- dataset\entropy_first_guess.json guarda o primeiro palpite calculado para a
-  busca groups.
+- dataset\entropy_first_guess_<lista>.json guarda o primeiro palpite calculado
+  para a busca groups e e separado conforme a lista de respostas selecionada.
+- dataset\entropy_runtime.log recebe eventos JSONL das avaliacoes, incluindo
+  inicio, configuracao, etapas, lotes concluidos e checkpoints. O arquivo e
+  sempre aberto em modo append; registros existentes nao sao substituidos.
+  Durante a avaliacao paralela, uma linha de heartbeat e acrescentada a cada
+  30 segundos sem conclusao de lote; os workers tambem registram o inicio e a
+  conclusao de cada resposta e imprimem esse progresso no terminal.
 - dataset\feedback_matrix_*.npy guarda a matriz de feedback pre-calculada.
 
 Os arquivos SQLite e seus auxiliares sao ignorados pelo Git. Nao apague o banco

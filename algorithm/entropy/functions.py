@@ -18,6 +18,7 @@ EXHAUSTIVE_LIMIT = 30
 BUDGET = 200_000
 FACTOR = 4
 MIN_K = 5
+MAX_K: int | None = None
 ENTROPY_MARGIN = 1.0
 MAX_ATTEMPTS = 6
 RANKING_CHUNK_SIZE = 256
@@ -28,10 +29,10 @@ MEMO_MEMORY_LIMIT = 20_000
 MEMO_COMMIT_INTERVAL = 1_000
 MEMO_BUSY_TIMEOUT_SECONDS = 300
 _BEST_MOVE_CACHE: OrderedDict[
-    tuple[str, int, int, int, int, int, float, int, bytes],
+    tuple[str, int, int, int, int, int, float, int, int | None, bytes],
     tuple[int, float],
 ] = OrderedDict()
-_BEST_MOVE_CACHE_CONFIG: tuple[int, int, int, int, float, int] | None = None
+_BEST_MOVE_CACHE_CONFIG: tuple[int, int, int, int, float, int, int | None] | None = None
 _MEMO_CONNECTION: sqlite3.Connection | None = None
 _MEMO_PATH: Path | None = None
 _MEMO_WORD_KEY: str | None = None
@@ -74,7 +75,7 @@ def profile_search() -> Generator[SearchProfile, None, None]:
         _PROFILE = None
 
 
-def _search_config_key() -> tuple[int, int, int, int, float, int]:
+def _search_config_key() -> tuple[int, int, int, int, float, int, int | None]:
     return (
         EXHAUSTIVE_LIMIT,
         BUDGET,
@@ -82,6 +83,7 @@ def _search_config_key() -> tuple[int, int, int, int, float, int]:
         MIN_K,
         ENTROPY_MARGIN,
         SEARCH_ALGORITHM_VERSION,
+        MAX_K,
     )
 
 
@@ -94,7 +96,7 @@ def _discard_stale_search_memos() -> None:
     stale_keys = [
         key
         for key in _BEST_MOVE_CACHE
-        if key[2:8] != active_config
+        if key[2:9] != active_config
     ]
     for key in stale_keys:
         del _BEST_MOVE_CACHE[key]
@@ -344,7 +346,7 @@ def memo_store_stats() -> dict[str, int | str | None]:
 def evaluation_scope_key(answers: list[str]) -> str:
     digest = hashlib.sha256()
     for answer in answers:
-        digest.update(answer.encode("ascii"))
+        digest.update(answer.encode("utf-8"))
         digest.update(b"\0")
     return digest.hexdigest()
 
@@ -469,15 +471,19 @@ def k_by_size(n: int, depth: int = 0) -> int:
         raise ValueError("n must be greater than zero.")
     if depth < 0:
         raise ValueError("depth must be non-negative.")
+    if MAX_K is not None and MAX_K <= 0:
+        raise ValueError("MAX_K must be greater than zero.")
     if n <= 2:
-        return 1
+        selected_k = 1
+    else:
+        guess_count = _guess_count(str(partition_functions.DATASET_PATH))
+        if n <= EXHAUSTIVE_LIMIT:
+            selected_k = guess_count
+        else:
+            budgeted_k = BUDGET // (n * FACTOR**depth)
+            selected_k = min(guess_count, max(MIN_K, budgeted_k))
 
-    guess_count = _guess_count(str(partition_functions.DATASET_PATH))
-    if n <= EXHAUSTIVE_LIMIT:
-        return guess_count
-
-    budgeted_k = BUDGET // (n * FACTOR**depth)
-    return min(guess_count, max(MIN_K, budgeted_k))
+    return min(selected_k, MAX_K) if MAX_K is not None else selected_k
 
 
 def _rank_state(
@@ -542,6 +548,10 @@ def _rank_state(
         if len(candidates) <= EXHAUSTIVE_LIMIT
         else k_by_size(len(candidates), depth)
     )
+    if MAX_K is not None:
+        if MAX_K <= 0:
+            raise ValueError("MAX_K must be greater than zero.")
+        guess_limit = min(guess_limit, MAX_K)
     return eligible_indices[order[:guess_limit]].tolist()
 
 

@@ -31,7 +31,7 @@ _MATRIX_CHUNK_SIZE = 256
 def _words_key(word_list: list[str]) -> str:
     digest = hashlib.sha256()
     for word in word_list:
-        digest.update(word.strip().upper().encode("ascii"))
+        digest.update(word.strip().upper().encode("utf-8"))
         digest.update(b"\0")
     return digest.hexdigest()
 
@@ -242,11 +242,15 @@ def _build_feedback_matrix(word_list: list[str], path: Path) -> None:
     word_count = len(word_list)
     if not word_count:
         raise ValueError("A lista de palavras não pode estar vazia.")
-    if any(len(word) != 5 for word in word_list):
-        raise ValueError("A matriz de feedback exige palavras de cinco letras.")
+    scoring_words = [t.normalize_word(word) for word in word_list]
+    if any(
+        len(word) != 5 or any(not "A" <= letter <= "Z" for letter in word)
+        for word in scoring_words
+    ):
+        raise ValueError("A matriz de feedback exige palavras de cinco letras A-Z.")
 
     encoded_words = np.frombuffer(
-        "".join(word_list).encode("ascii"),
+        "".join(scoring_words).encode("ascii"),
         dtype=np.uint8,
     ).reshape(word_count, 5) - ord("A")
     answer_letter_counts = np.stack(

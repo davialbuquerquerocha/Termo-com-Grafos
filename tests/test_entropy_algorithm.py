@@ -1,5 +1,8 @@
+from collections.abc import Iterable
+from concurrent.futures import Future, wait as futures_wait
 from pathlib import Path
 from contextlib import redirect_stdout
+import hashlib
 import io
 import json
 import random
@@ -7,6 +10,7 @@ import sqlite3
 import tempfile
 from threading import Event, Thread
 import time
+from typing import Any
 import unittest
 from unittest.mock import patch
 
@@ -19,6 +23,105 @@ from algorithm.partition import functions as partition_functions
 
 
 class EntropyAlgorithmTests(unittest.TestCase):
+    def test_evaluation_scope_key_supports_accented_answers(self) -> None:
+        expected = hashlib.sha256("ÁUDIO\0".encode("utf-8")).hexdigest()
+
+        self.assertEqual(helpers.evaluation_scope_key(["ÁUDIO"]), expected)
+
+    def test_load_answers_selects_between_accepted_and_solution_files(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            accepted_path = Path(directory) / "termo_palavras_aceitas.txt"
+            accepted_path.write_text("AAAAA\nBBBBB\n", encoding="utf-8")
+            accepted_path.with_name(
+                "termo_solucoes_possiveis.txt"
+            ).write_text("BBBBB\n", encoding="utf-8")
+
+            with patch.object(
+                partition_functions,
+                "DATASET_PATH",
+                accepted_path,
+            ):
+                self.assertEqual(
+                    solver._load_answers("accepted"),
+                    ["AAAAA", "BBBBB"],
+                )
+                self.assertEqual(
+                    solver._load_answers("solutions"),
+                    ["BBBBB"],
+                )
+
+    def test_first_guess_cache_uses_guess_vocabulary_indices(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            accepted_path = Path(directory) / "termo_palavras_aceitas.txt"
+            accepted_path.write_text(
+                "AAAAA\nBBBBB\nCCCCC\n",
+                encoding="utf-8",
+            )
+            accepted_path.with_name(
+                "termo_solucoes_possiveis.txt"
+            ).write_text("CCCCC\nAAAAA\n", encoding="utf-8")
+
+            with (
+                patch.object(
+                    partition_functions,
+                    "DATASET_PATH",
+                    accepted_path,
+                ),
+                patch.object(solver, "best_move", return_value=(1, 1.5)),
+            ):
+                first_result = solver.choose_first_guess(answer_list="solutions")
+                cache_path = accepted_path.with_name(
+                    "entropy_first_guess_solutions.json"
+                )
+                cache_data = json.loads(cache_path.read_text(encoding="utf-8"))
+                cached_result = solver.choose_first_guess(
+                    answer_list="solutions"
+                )
+
+            self.assertEqual(first_result, (1, 1.5))
+            self.assertEqual(cached_result, first_result)
+            self.assertEqual(cache_data["guess"], "BBBBB")
+
+    def test_play_cli_forwards_selected_answer_list(self) -> None:
+        with patch.object(solver, "interactive_play") as interactive_play:
+            solver.main(["play", "--answer-list", "solutions"])
+
+        interactive_play.assert_called_once_with("entropy", "solutions")
+
+    def test_evaluate_cli_samples_and_forwards_selected_answer_list(self) -> None:
+        result = solver.SolverEvaluation(
+            1.0,
+            1,
+            ("AAAAA",),
+            {1: 1},
+            1.0,
+            1,
+        )
+        with (
+            patch.object(solver, "_load_answers", return_value=["AAAAA"]) as load_answers,
+            patch.object(solver, "evaluate_solver", return_value=result) as evaluate,
+            redirect_stdout(io.StringIO()),
+        ):
+            solver.main(
+                [
+                    "evaluate",
+                    "--answer-list",
+                    "solutions",
+                    "--sample-size",
+                    "1",
+                ]
+            )
+
+        load_answers.assert_called_once_with("solutions")
+        evaluate.assert_called_once_with(
+            "entropy",
+            answers=["AAAAA"],
+            resume=True,
+            checkpoint_interval=100,
+            workers=1,
+            answer_list="solutions",
+        )
+
     def test_entropy_package_exports_both_strategies(self) -> None:
         self.assertIs(entropy_package.interactive_play, solver.interactive_play)
         self.assertIs(entropy_package.entropy, helpers.entropy)
@@ -52,6 +155,7 @@ class EntropyAlgorithmTests(unittest.TestCase):
             helpers.FACTOR,
             helpers.MIN_K,
             helpers.ENTROPY_MARGIN,
+            helpers.MAX_K,
         )
 
         with tempfile.TemporaryDirectory() as directory:
@@ -79,6 +183,13 @@ class EntropyAlgorithmTests(unittest.TestCase):
                         context,
                     )
                     self.assertEqual(set(exhaustive), set(range(len(words))))
+                    helpers.MAX_K = 2
+                    capped_exhaustive = helpers._rank_state(
+                        [*words[:3], words[4]],
+                        0,
+                        context,
+                    )
+                    self.assertEqual(len(capped_exhaustive), 2)
             finally:
                 helpers._guess_count.cache_clear()
                 (
@@ -87,7 +198,28 @@ class EntropyAlgorithmTests(unittest.TestCase):
                     helpers.FACTOR,
                     helpers.MIN_K,
                     helpers.ENTROPY_MARGIN,
+                    helpers.MAX_K,
                 ) = original_settings
+
+    def test_max_k_caps_guess_count_for_exhaustive_states(self) -> None:
+        with (
+            patch.object(helpers, "MAX_K", 2),
+            patch.object(helpers, "EXHAUSTIVE_LIMIT", 30),
+            patch.object(helpers, "_guess_count", return_value=100),
+        ):
+            self.assertEqual(helpers.k_by_size(5), 2)
+
+    def test_groups_cli_sets_max_k(self) -> None:
+        with (
+            patch.object(helpers, "MAX_K", None),
+            patch.object(solver, "interactive_play") as interactive_play,
+        ):
+            solver.main(
+                ["play", "--strategy", "groups", "--max-k", "7"]
+            )
+
+            self.assertEqual(helpers.MAX_K, 7)
+            interactive_play.assert_called_once_with("groups", "accepted")
 
     def test_best_move_forwards_search_depth(self) -> None:
         words = ["AAAAA", "BBBBB"]
@@ -244,14 +376,20 @@ class EntropyAlgorithmTests(unittest.TestCase):
             "test",
         )
         with (
-            patch.object(solver, "_load_answers", return_value=words),
+            patch.object(solver, "_load_answers", return_value=words) as load_answers,
             patch.object(solver, "_search_context", return_value=context),
-            patch.object(solver, "choose_first_guess", return_value=(0, 1.5)),
+            patch.object(
+                solver,
+                "choose_first_guess",
+                return_value=(0, 1.5),
+            ) as first_guess,
             patch.object(solver, "_choose_guess_with_context", return_value=1) as choose_guess,
         ):
-            attempts = solver.simulate_game("BBBBB", "deep")
+            attempts = solver.simulate_game("BBBBB", "deep", "solutions")
 
         self.assertEqual(attempts, 2)
+        load_answers.assert_called_once_with("solutions")
+        first_guess.assert_called_once_with(answer_list="solutions")
         choose_guess.assert_called_once_with(["BBBBB"], "deep", 1, context)
 
     def test_memo_key_changes_when_search_settings_change(self) -> None:
@@ -562,7 +700,11 @@ class EntropyAlgorithmTests(unittest.TestCase):
             )
             try:
                 with (
-                    patch.object(solver, "_load_answers", return_value=words),
+                    patch.object(
+                        solver,
+                        "_load_answers",
+                        return_value=words,
+                    ) as load_answers,
                     patch.object(
                         partition_functions,
                         "DATASET_PATH",
@@ -611,6 +753,7 @@ class EntropyAlgorithmTests(unittest.TestCase):
                     first_evaluation = solver.evaluate_solver(
                         answers=words,
                         checkpoint_interval=1,
+                        answer_list="solutions",
                     )
                     self.assertEqual(simulate.call_count, len(words))
                     search_context.assert_called_once()
@@ -626,6 +769,7 @@ class EntropyAlgorithmTests(unittest.TestCase):
                     rebuilt_evaluation = solver.evaluate_solver(
                         answers=words,
                         checkpoint_interval=1,
+                        answer_list="solutions",
                     )
                     self.assertEqual(simulate.call_count, len(words))
 
@@ -634,8 +778,13 @@ class EntropyAlgorithmTests(unittest.TestCase):
                     resumed_evaluation = solver.evaluate_solver(
                         answers=words,
                         checkpoint_interval=1,
+                        answer_list="solutions",
                     )
 
+                    self.assertEqual(
+                        [call.args for call in load_answers.call_args_list],
+                        [("solutions",)] * 3,
+                    )
                 self.assertEqual(first_evaluation, rebuilt_evaluation)
                 self.assertEqual(first_evaluation, resumed_evaluation)
                 self.assertEqual(simulate.call_count, 0)
@@ -651,6 +800,8 @@ class EntropyAlgorithmTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             word_list_path = Path(directory) / "answers.txt"
             word_list_path.write_text("\n".join(words), encoding="utf-8")
+            runtime_log_path = word_list_path.with_name("entropy_runtime.log")
+            runtime_log_path.write_text("preexisting log entry\n", encoding="utf-8")
             try:
                 with (
                     patch.object(
@@ -667,16 +818,63 @@ class EntropyAlgorithmTests(unittest.TestCase):
                         workers=1,
                     )
                     with helpers.profile_search() as profile:
-                        parallel_result = solver.evaluate_solver(
-                            "entropy",
-                            resume=False,
-                            checkpoint_interval=1,
-                            workers=2,
-                        )
+                        wait_calls = 0
+
+                        def wait_with_initial_heartbeat(
+                            futures: Iterable[Future[Any]],
+                            timeout: float | None = None,
+                            return_when: str = "ALL_COMPLETED",
+                        ) -> tuple[set[Future[Any]], set[Future[Any]]]:
+                            nonlocal wait_calls
+                            wait_calls += 1
+                            if wait_calls == 1:
+                                pending = set(futures)
+                                return set(), pending
+                            return futures_wait(
+                                futures,
+                                timeout=timeout,
+                                return_when=return_when,
+                            )
+
+                        with patch.object(
+                            solver,
+                            "wait",
+                            side_effect=wait_with_initial_heartbeat,
+                        ):
+                            parallel_result = solver.evaluate_solver(
+                                "entropy",
+                                resume=False,
+                                checkpoint_interval=1,
+                                workers=2,
+                            )
 
                 self.assertEqual(parallel_result, serial_result)
                 self.assertEqual(parallel_result.total_games, len(words))
                 self.assertEqual(profile.worker_processes, 2)
+                log_lines = runtime_log_path.read_text(
+                    encoding="utf-8"
+                ).splitlines()
+                self.assertEqual(log_lines[0], "preexisting log entry")
+                runtime_events = [
+                    json.loads(line)["event"]
+                    for line in log_lines[1:]
+                ]
+                self.assertEqual(runtime_events.count("run_started"), 2)
+                self.assertEqual(runtime_events.count("run_completed"), 2)
+                self.assertIn(
+                    "parallel_answer_evaluation_completed",
+                    runtime_events,
+                )
+                self.assertIn(
+                    "parallel_evaluation_heartbeat",
+                    runtime_events,
+                )
+                self.assertEqual(
+                    runtime_events.count("worker_answer_completed"),
+                    3,
+                )
+                self.assertEqual(runtime_events.count("worker_answer_started"), 3)
+                self.assertEqual(runtime_events.count("worker_batch_started"), 3)
                 json_files = list(Path(directory).glob("entropy_games_*.json"))
                 self.assertEqual(len(json_files), 1)
                 saved_results = json.loads(

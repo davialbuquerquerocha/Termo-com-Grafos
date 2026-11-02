@@ -8,6 +8,7 @@ each guess. ``"deep"`` remains available as an alias for ``"groups"``.
 from .algorithm import (
     SolverEvaluation,
     Strategy,
+    AnswerList,
     best_move,
     choose_first_guess,
     choose_guess,
@@ -32,6 +33,7 @@ __all__ = [
     "SolverEvaluation",
     "SearchProfile",
     "Strategy",
+    "AnswerList",
     "best_move",
     "choose_first_guess",
     "choose_guess",

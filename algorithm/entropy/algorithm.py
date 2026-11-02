@@ -4,14 +4,17 @@ import argparse
 from collections import Counter, OrderedDict
 from collections.abc import Callable, Sequence
 from concurrent.futures import FIRST_COMPLETED, ProcessPoolExecutor, wait
+from datetime import datetime
 import hashlib
 import json
 import math
 import multiprocessing
+import os
 from pathlib import Path
 import random
 import re
 import tempfile
+import uuid
 from time import perf_counter
 from typing import Literal, NamedTuple
 
@@ -21,6 +24,7 @@ from algorithm.partition import functions as partition_functions
 from . import functions as helpers
 
 Strategy = Literal["entropy", "groups", "deep"]
+AnswerList = Literal["accepted", "solutions"]
 GuessSelector = Callable[[list[str]], int]
 
 _ENTROPY_GUESS_CACHE: OrderedDict[
@@ -42,6 +46,7 @@ _WORKER_ROOT_CANDIDATES: list[str] | None = None
 _WORKER_ROOT_DEPTH = 0
 _GROUP_PROGRESS_INTERVAL = 10_000_000
 _WORKER_GROUP_PROGRESS_COUNT = 0
+_RUN_LOG_HEARTBEAT_SECONDS = 30
 
 
 class SolverEvaluation(NamedTuple):
@@ -54,6 +59,7 @@ class SolverEvaluation(NamedTuple):
 
 
 __all__ = [
+    "AnswerList",
     "SolverEvaluation",
     "Strategy",
     "best_move",
@@ -67,6 +73,23 @@ __all__ = [
 ]
 
 
+def _append_runtime_log(
+    path: Path,
+    run_id: str,
+    event: str,
+    **details: object,
+) -> None:
+    record = {
+        "timestamp": datetime.now().astimezone().isoformat(timespec="seconds"),
+        "run_id": run_id,
+        "pid": os.getpid(),
+        "event": event,
+        **details,
+    }
+    with path.open("a", encoding="utf-8") as log_file:
+        log_file.write(json.dumps(record, ensure_ascii=False) + "\n")
+
+
 def _validate_strategy(strategy: str) -> Strategy:
     if strategy == "entropy":
         return "entropy"
@@ -78,7 +101,7 @@ def _validate_strategy(strategy: str) -> Strategy:
     )
 
 
-def _search_settings() -> dict[str, int | float]:
+def _search_settings() -> dict[str, int | float | None]:
     return {
         "algorithm_version": helpers.SEARCH_ALGORITHM_VERSION,
         "max_attempts": helpers.MAX_ATTEMPTS,
@@ -86,6 +109,7 @@ def _search_settings() -> dict[str, int | float]:
         "budget": helpers.BUDGET,
         "factor": helpers.FACTOR,
         "min_k": helpers.MIN_K,
+        "max_k": helpers.MAX_K,
         "entropy_margin": helpers.ENTROPY_MARGIN,
     }
 
@@ -96,23 +120,39 @@ def _normalize_candidates(candidates: list[str]) -> list[str]:
     )
 
 
-def _load_answers() -> list[str]:
-    with partition_functions.DATASET_PATH.open(encoding="utf-8") as word_file:
+def _answer_list_path(answer_list: AnswerList) -> Path:
+    if answer_list == "accepted":
+        return partition_functions.DATASET_PATH
+    if answer_list == "solutions":
+        return partition_functions.DATASET_PATH.with_name(
+            "termo_solucoes_possiveis.txt"
+        )
+    raise ValueError("answer_list must be 'accepted' or 'solutions'.")
+
+
+def _load_answers(answer_list: AnswerList = "accepted") -> list[str]:
+    with _answer_list_path(answer_list).open(encoding="utf-8") as word_file:
         answers = _normalize_candidates(word_file.readlines())
     if not answers:
-        raise ValueError("The accepted-word list must not be empty.")
+        raise ValueError("The answer list must not be empty.")
     return answers
+
+
+def _load_guess_words(candidates: list[str]) -> list[str]:
+    with partition_functions.DATASET_PATH.open(encoding="utf-8") as word_file:
+        guesses = _normalize_candidates(word_file.readlines())
+    for candidate in candidates:
+        normalized_candidate = candidate.strip().upper()
+        if normalized_candidate not in guesses:
+            guesses.append(normalized_candidate)
+    return guesses
 
 
 def _search_context(
     candidates: list[str],
     memo_path: Path | None = None,
 ) -> _SearchContext:
-    guesses = _load_answers()
-    for candidate in candidates:
-        normalized_candidate = candidate.strip().upper()
-        if normalized_candidate not in guesses:
-            guesses.append(normalized_candidate)
+    guesses = _load_guess_words(candidates)
     matrix, word_indices, word_key = partition_functions._get_feedback_matrix(
         guesses
     )
@@ -175,26 +215,39 @@ def evaluate_guess(i: int, candidates: list[str], limit: float) -> float:
     return helpers._evaluate_guess(i, normalized_candidates, limit, 0, context)
 
 
-def choose_first_guess(workers: int = 1) -> tuple[int, float]:
+def choose_first_guess(
+    workers: int = 1,
+    answer_list: AnswerList = "accepted",
+) -> tuple[int, float]:
     """Load or calculate the deep-search first guess and persist its result."""
     if workers <= 0:
         raise ValueError("workers must be greater than zero.")
-    word_list_path = partition_functions.DATASET_PATH
+    word_list_path = _answer_list_path(answer_list)
     word_list_content = word_list_path.read_bytes()
     word_list_hash = hashlib.sha256(word_list_content).hexdigest()
     candidates = _normalize_candidates(
         word_list_content.decode("utf-8").splitlines()
     )
+    guess_words = _load_guess_words(candidates)
+    guess_list_hash = hashlib.sha256(
+        partition_functions.DATASET_PATH.read_bytes()
+    ).hexdigest()
     if not candidates:
-        raise ValueError("The accepted-word list must not be empty.")
+        raise ValueError("The answer list must not be empty.")
 
-    cache_path = word_list_path.with_name("entropy_first_guess.json")
+    cache_path = word_list_path.with_name(
+        f"entropy_first_guess_{answer_list}.json"
+    )
     if cache_path.exists():
         cached_data = json.loads(cache_path.read_text(encoding="utf-8"))
         if not isinstance(cached_data, dict):
             raise ValueError(f"Invalid first-guess cache format in {cache_path}.")
         if cached_data.get("word_list_hash") == word_list_hash:
-            if cached_data.get("search_settings") != _search_settings():
+            if (
+                cached_data.get("answer_list") != answer_list
+                or cached_data.get("guess_list_hash") != guess_list_hash
+                or cached_data.get("search_settings") != _search_settings()
+            ):
                 cached_data = {}
         if cached_data.get("word_list_hash") == word_list_hash:
             guess = cached_data.get("guess")
@@ -208,10 +261,10 @@ def choose_first_guess(workers: int = 1) -> tuple[int, float]:
             ):
                 raise ValueError(f"Invalid first-guess cache values in {cache_path}.")
             try:
-                return candidates.index(guess), float(expected_cost)
+                return guess_words.index(guess), float(expected_cost)
             except ValueError as error:
                 raise ValueError(
-                    f"Cached first guess {guess!r} is absent from {word_list_path}."
+                    f"Cached first guess {guess!r} is absent from the guess vocabulary."
                 ) from error
 
     print(
@@ -220,15 +273,18 @@ def choose_first_guess(workers: int = 1) -> tuple[int, float]:
         flush=True,
     )
     guess_index, expected_cost = best_move(candidates, workers=workers)
-    if not 0 <= guess_index < len(candidates):
-        raise RuntimeError("best_move returned an index outside the word list.")
+    if not 0 <= guess_index < len(guess_words):
+        raise RuntimeError("best_move returned an index outside the guess vocabulary.")
     if not math.isfinite(expected_cost) or expected_cost <= 0:
         raise RuntimeError("best_move returned an invalid expected cost.")
 
+    guess = guess_words[guess_index]
     cache_data = {
         "word_list_hash": word_list_hash,
+        "answer_list": answer_list,
+        "guess_list_hash": guess_list_hash,
         "search_settings": _search_settings(),
-        "guess": candidates[guess_index],
+        "guess": guess,
         "expected_cost": expected_cost,
     }
     temporary_path: Path | None = None
@@ -342,14 +398,21 @@ def _expected_cost(
     return float(-np.sum(probabilities * np.log2(probabilities)))
 
 
-def interactive_play(strategy: Strategy = "entropy") -> str:
+def interactive_play(
+    strategy: Strategy = "entropy",
+    answer_list: AnswerList = "accepted",
+) -> str:
     """Play using entropy only or recursively analyzed feedback groups."""
     strategy = _validate_strategy(strategy)
-    candidates = _load_answers()
+    candidates = _load_answers(answer_list)
     context = _search_context(candidates)
     guesses, word_indices, matrix, _ = context
     winning_feedback = partition_functions._FEEDBACK_PATTERN_COUNT - 1
-    initial_deep_guess = choose_first_guess() if strategy == "deep" else None
+    initial_deep_guess = (
+        choose_first_guess(answer_list=answer_list)
+        if strategy == "deep"
+        else None
+    )
     depth = 0
 
     while candidates:
@@ -424,18 +487,26 @@ def interactive_play(strategy: Strategy = "entropy") -> str:
     raise RuntimeError("The candidate set became empty.")
 
 
-def simulate_game(answer: str, strategy: Strategy = "entropy") -> int:
+def simulate_game(
+    answer: str,
+    strategy: Strategy = "entropy",
+    answer_list: AnswerList = "accepted",
+) -> int:
     """Simulate a game with entropy-only or feedback-group analysis."""
     strategy = _validate_strategy(strategy)
     normalized_answer = answer.strip().upper()
-    candidates = _load_answers()
+    candidates = _load_answers(answer_list)
     if normalized_answer not in candidates:
         raise ValueError(
-            f"The answer {normalized_answer!r} is not in the accepted-word list."
+            f"The answer {normalized_answer!r} is not in the selected answer list."
         )
 
     context = _search_context(candidates)
-    initial_deep_guess = choose_first_guess() if strategy == "deep" else None
+    initial_deep_guess = (
+        choose_first_guess(answer_list=answer_list)
+        if strategy == "deep"
+        else None
+    )
     initial_guess_index = initial_deep_guess[0] if initial_deep_guess else None
     return _simulate_game_with_context(
         normalized_answer,
@@ -543,11 +614,13 @@ def _initialize_evaluation_worker(
     collect_profile: bool,
     root_candidates: list[str] | None = None,
     root_depth: int = 0,
+    max_k: int | None = None,
 ) -> None:
     global _WORKER_ANSWERS, _WORKER_STRATEGY, _WORKER_CONTEXT
     global _WORKER_MEMO_PATH, _WORKER_INITIAL_GUESS_INDEX, _WORKER_PROFILE
     global _WORKER_ROOT_CANDIDATES, _WORKER_ROOT_DEPTH
     global _WORKER_GROUP_PROGRESS_COUNT
+    helpers.MAX_K = max_k
     partition_functions.DATASET_PATH = dataset_path
     process_name = multiprocessing.current_process().name
     worker_match = re.search(r"-(\d+)$", process_name)
@@ -735,6 +808,7 @@ def _parallel_root_evaluator(
             helpers._PROFILE is not None,
             candidates,
             depth,
+            helpers.MAX_K,
         ),
     ) as executor:
         if can_parallelize_base:
@@ -886,6 +960,9 @@ def _group_progress_reporter(guess: str) -> Callable[[], None]:
 
 def _process_evaluation_batch(
     answers: list[str],
+    batch_index: int = 0,
+    runtime_log_path: Path | None = None,
+    runtime_log_id: str | None = None,
 ) -> tuple[
     list[tuple[str, int, list[dict[str, str]]]],
     helpers.SearchProfile | None,
@@ -902,10 +979,37 @@ def _process_evaluation_batch(
         _WORKER_CONTEXT[3],
     )
     results: list[tuple[str, int, list[dict[str, str]]]] = []
+    process_name = multiprocessing.current_process().name
+    if runtime_log_path is not None and runtime_log_id is not None:
+        _append_runtime_log(
+            runtime_log_path,
+            runtime_log_id,
+            "worker_batch_started",
+            batch_index=batch_index,
+            batch_size=len(answers),
+            worker=process_name,
+        )
     try:
         if _WORKER_PROFILE:
             with helpers.profile_search() as profile:
-                for answer in answers:
+                for answer_index, answer in enumerate(answers, start=1):
+                    print(
+                        f"{process_name}: iniciando resposta {answer} "
+                        f"({answer_index}/{len(answers)} do lote "
+                        f"{batch_index + 1}).",
+                        flush=True,
+                    )
+                    if runtime_log_path is not None and runtime_log_id is not None:
+                        _append_runtime_log(
+                            runtime_log_path,
+                            runtime_log_id,
+                            "worker_answer_started",
+                            batch_index=batch_index,
+                            answer_index=answer_index,
+                            batch_size=len(answers),
+                            answer=answer,
+                            worker=process_name,
+                        )
                     attempts, guess_history = _simulate_and_capture_game(
                         answer,
                         _WORKER_ANSWERS,
@@ -914,9 +1018,47 @@ def _process_evaluation_batch(
                         _WORKER_INITIAL_GUESS_INDEX,
                     )
                     results.append((answer, attempts, guess_history))
+                    print(
+                        f"{process_name}: resposta {answer} concluída "
+                        f"({answer_index}/{len(answers)} do lote "
+                        f"{batch_index + 1}).",
+                        flush=True,
+                    )
+                    if (
+                        runtime_log_path is not None
+                        and runtime_log_id is not None
+                    ):
+                        _append_runtime_log(
+                            runtime_log_path,
+                            runtime_log_id,
+                            "worker_answer_completed",
+                            batch_index=batch_index,
+                            answer_index=answer_index,
+                            batch_size=len(answers),
+                            answer=answer,
+                            attempts=attempts,
+                            worker=process_name,
+                        )
             return results, profile
 
-        for answer in answers:
+        for answer_index, answer in enumerate(answers, start=1):
+            print(
+                f"{process_name}: iniciando resposta {answer} "
+                f"({answer_index}/{len(answers)} do lote "
+                f"{batch_index + 1}).",
+                flush=True,
+            )
+            if runtime_log_path is not None and runtime_log_id is not None:
+                _append_runtime_log(
+                    runtime_log_path,
+                    runtime_log_id,
+                    "worker_answer_started",
+                    batch_index=batch_index,
+                    answer_index=answer_index,
+                    batch_size=len(answers),
+                    answer=answer,
+                    worker=process_name,
+                )
             attempts, guess_history = _simulate_and_capture_game(
                 answer,
                 _WORKER_ANSWERS,
@@ -925,6 +1067,27 @@ def _process_evaluation_batch(
                 _WORKER_INITIAL_GUESS_INDEX,
             )
             results.append((answer, attempts, guess_history))
+            print(
+                f"{process_name}: resposta {answer} concluída "
+                f"({answer_index}/{len(answers)} do lote "
+                f"{batch_index + 1}).",
+                flush=True,
+            )
+            if (
+                runtime_log_path is not None
+                and runtime_log_id is not None
+            ):
+                _append_runtime_log(
+                    runtime_log_path,
+                    runtime_log_id,
+                    "worker_answer_completed",
+                    batch_index=batch_index,
+                    answer_index=answer_index,
+                    batch_size=len(answers),
+                    answer=answer,
+                    attempts=attempts,
+                    worker=process_name,
+                )
         return results, None
     finally:
         helpers.close_memo_store()
@@ -1091,6 +1254,7 @@ def evaluate_solver(
     resume: bool = True,
     checkpoint_interval: int = 100,
     workers: int = 1,
+    answer_list: AnswerList = "accepted",
 ) -> SolverEvaluation:
     """Evaluate answers with resumable results and optional CPU processes."""
     strategy = _validate_strategy(strategy)
@@ -1098,7 +1262,7 @@ def evaluate_solver(
         raise ValueError("checkpoint_interval must be greater than zero.")
     if workers <= 0:
         raise ValueError("workers must be greater than zero.")
-    all_answers = _load_answers()
+    all_answers = _load_answers(answer_list)
     selected_answers = (
         all_answers
         if answers is None
@@ -1109,15 +1273,54 @@ def evaluate_solver(
     invalid_answers = set(selected_answers) - set(all_answers)
     if invalid_answers:
         raise ValueError(
-            "Evaluation answers must be in the accepted-word list: "
+            f"Evaluation answers must be in the selected {answer_list} list: "
             + ", ".join(sorted(invalid_answers))
         )
 
+    run_id = uuid.uuid4().hex[:12]
+    runtime_log_path = partition_functions.DATASET_PATH.with_name(
+        "entropy_runtime.log"
+    )
+    run_started = perf_counter()
+    _append_runtime_log(
+        runtime_log_path,
+        run_id,
+        "run_started",
+        strategy=strategy,
+        answer_list=answer_list,
+        answer_count=len(selected_answers),
+        workers=workers,
+        max_k=helpers.MAX_K,
+        checkpoint_interval=checkpoint_interval,
+        resume=resume,
+    )
     print(
         "Preparando a matriz de feedback e o contexto da avaliação.",
         flush=True,
     )
-    context = _search_context(all_answers)
+    _append_runtime_log(
+        runtime_log_path,
+        run_id,
+        "feedback_matrix_preparation_started",
+        answer_count=len(all_answers),
+    )
+    try:
+        context = _search_context(all_answers)
+    except Exception as error:
+        _append_runtime_log(
+            runtime_log_path,
+            run_id,
+            "feedback_matrix_preparation_failed",
+            error_type=type(error).__name__,
+            error=str(error),
+        )
+        raise
+    _append_runtime_log(
+        runtime_log_path,
+        run_id,
+        "feedback_matrix_preparation_completed",
+        elapsed_seconds=round(perf_counter() - run_started, 3),
+    )
     evaluation_key = helpers.evaluation_scope_key(selected_answers)
     json_output_path = _evaluation_json_path(
         strategy,
@@ -1180,12 +1383,44 @@ def evaluate_solver(
         for answer in selected_answers
         if answer not in guess_histories
     ]
+    _append_runtime_log(
+        runtime_log_path,
+        run_id,
+        "saved_results_loaded",
+        completed_answers=len(guess_histories),
+        pending_answers=len(pending_answers),
+    )
     pending_results: dict[str, int] = {}
     initial_guess_index: int | None = None
     if pending_answers and strategy == "deep":
         if helpers._PROFILE is not None:
             helpers._PROFILE.worker_processes = min(workers, len(all_answers))
-        initial_guess_index = choose_first_guess(workers=workers)[0]
+        _append_runtime_log(
+            runtime_log_path,
+            run_id,
+            "initial_groups_search_started",
+            max_k=helpers.MAX_K,
+        )
+        try:
+            initial_guess_index = choose_first_guess(
+                workers=workers,
+                answer_list=answer_list,
+            )[0]
+        except Exception as error:
+            _append_runtime_log(
+                runtime_log_path,
+                run_id,
+                "initial_groups_search_failed",
+                error_type=type(error).__name__,
+                error=str(error),
+            )
+            raise
+        _append_runtime_log(
+            runtime_log_path,
+            run_id,
+            "initial_groups_search_completed",
+            guess=context[0][initial_guess_index],
+        )
 
     worker_count = min(workers, len(pending_answers)) if pending_answers else 0
     if helpers._PROFILE is not None:
@@ -1206,6 +1441,12 @@ def evaluate_solver(
     )
 
     if worker_count <= 1:
+        _append_runtime_log(
+            runtime_log_path,
+            run_id,
+            "serial_answer_evaluation_started",
+            pending_answers=len(pending_answers),
+        )
         completed_batches = (
             [
                 (
@@ -1251,6 +1492,13 @@ def evaluate_solver(
                 f"Respostas avaliadas: {len(attempts_by_answer)}/"
                 f"{len(selected_answers)}"
             )
+            _append_runtime_log(
+                runtime_log_path,
+                run_id,
+                "answer_checkpoint_saved",
+                completed_answers=len(attempts_by_answer),
+                total_answers=len(selected_answers),
+            )
     elif pending_answers:
         worker_memo_base = partition_functions.DATASET_PATH.with_name(
             "entropy_memo_worker.sqlite3"
@@ -1261,6 +1509,15 @@ def evaluate_solver(
             for index in range(0, len(pending_answers), batch_size)
         ]
         completed_count = 0
+        evaluation_started = perf_counter()
+        _append_runtime_log(
+            runtime_log_path,
+            run_id,
+            "parallel_answer_evaluation_started",
+            worker_count=worker_count,
+            batch_count=len(batches),
+            batch_size=batch_size,
+        )
         with ProcessPoolExecutor(
             max_workers=worker_count,
             mp_context=multiprocessing.get_context("spawn"),
@@ -1273,48 +1530,140 @@ def evaluate_solver(
                 worker_count,
                 initial_guess_index,
                 helpers._PROFILE is not None,
+                helpers.MAX_K,
             ),
         ) as executor:
-            for batch_results, worker_profile in executor.map(
-                _process_evaluation_batch,
-                batches,
-                chunksize=1,
-            ):
-                if helpers._PROFILE is not None and worker_profile is not None:
-                    _merge_worker_profile(helpers._PROFILE, worker_profile)
-                for answer, attempts, guess_history in batch_results:
-                    if attempts <= 0:
-                        raise RuntimeError(
-                            "simulate_game returned a non-positive attempt count."
-                        )
-                    attempts_by_answer[answer] = attempts
-                    guess_histories[answer] = guess_history
-                    pending_results[answer] = attempts
-                helpers.save_evaluation_results(
-                    strategy,
-                    evaluation_key,
-                    pending_results,
+            futures = {
+                executor.submit(
+                    _process_evaluation_batch,
+                    batch,
+                    batch_index,
+                    runtime_log_path,
+                    run_id,
+                ): batch_index
+                for batch_index, batch in enumerate(batches)
+            }
+            ready_batches: dict[
+                int,
+                tuple[
+                    list[tuple[str, int, list[dict[str, str]]]],
+                    helpers.SearchProfile | None,
+                ],
+            ] = {}
+            next_batch_to_commit = 0
+            completed_batch_count = 0
+            while futures:
+                finished_futures, _ = wait(
+                    futures,
+                    timeout=_RUN_LOG_HEARTBEAT_SECONDS,
+                    return_when=FIRST_COMPLETED,
                 )
-                completed_count += len(pending_results)
-                pending_results.clear()
-                _save_evaluation_json(
-                    json_output_path,
-                    strategy,
-                    evaluation_key,
-                    context[3],
-                    selected_answers,
-                    attempts_by_answer,
-                    guess_histories,
-                    complete=False,
-                )
-                if (
-                    completed_count % checkpoint_interval == 0
-                    or completed_count == len(pending_answers)
-                ):
-                    print(
-                        f"Respostas avaliadas: {len(attempts_by_answer)}/"
-                        f"{len(selected_answers)}"
+                if not finished_futures:
+                    _append_runtime_log(
+                        runtime_log_path,
+                        run_id,
+                        "parallel_evaluation_heartbeat",
+                        completed_batches=completed_batch_count,
+                        batch_count=len(batches),
+                        committed_batches=next_batch_to_commit,
+                        completed_answers=len(attempts_by_answer),
+                        elapsed_seconds=round(
+                            perf_counter() - evaluation_started,
+                            3,
+                        ),
                     )
+                    continue
+
+                for future in finished_futures:
+                    batch_index = futures.pop(future)
+                    try:
+                        batch_result = future.result()
+                    except Exception as error:
+                        _append_runtime_log(
+                            runtime_log_path,
+                            run_id,
+                            "parallel_evaluation_batch_failed",
+                            batch_index=batch_index,
+                            error_type=type(error).__name__,
+                            error=str(error),
+                        )
+                        raise
+                    ready_batches[batch_index] = batch_result
+                    completed_batch_count += 1
+                    _append_runtime_log(
+                        runtime_log_path,
+                        run_id,
+                        "parallel_evaluation_batch_completed",
+                        batch_index=batch_index,
+                        completed_batches=completed_batch_count,
+                        batch_count=len(batches),
+                        answers_in_batch=len(batch_result[0]),
+                        elapsed_seconds=round(
+                            perf_counter() - evaluation_started,
+                            3,
+                        ),
+                    )
+
+                while next_batch_to_commit in ready_batches:
+                    batch_results, worker_profile = ready_batches.pop(
+                        next_batch_to_commit
+                    )
+                    next_batch_to_commit += 1
+                    if helpers._PROFILE is not None and worker_profile is not None:
+                        _merge_worker_profile(helpers._PROFILE, worker_profile)
+                    for answer, attempts, guess_history in batch_results:
+                        if attempts <= 0:
+                            raise RuntimeError(
+                                "simulate_game returned a non-positive attempt count."
+                            )
+                        attempts_by_answer[answer] = attempts
+                        guess_histories[answer] = guess_history
+                        pending_results[answer] = attempts
+                    helpers.save_evaluation_results(
+                        strategy,
+                        evaluation_key,
+                        pending_results,
+                    )
+                    completed_count += len(pending_results)
+                    pending_results.clear()
+                    _save_evaluation_json(
+                        json_output_path,
+                        strategy,
+                        evaluation_key,
+                        context[3],
+                        selected_answers,
+                        attempts_by_answer,
+                        guess_histories,
+                        complete=False,
+                    )
+                    if (
+                        completed_count % checkpoint_interval == 0
+                        or completed_count == len(pending_answers)
+                    ):
+                        print(
+                            f"Respostas avaliadas: {len(attempts_by_answer)}/"
+                            f"{len(selected_answers)}"
+                        )
+                    _append_runtime_log(
+                        runtime_log_path,
+                        run_id,
+                        "answer_checkpoint_saved",
+                        completed_answers=len(attempts_by_answer),
+                        total_answers=len(selected_answers),
+                        committed_batches=next_batch_to_commit,
+                    )
+        _append_runtime_log(
+            runtime_log_path,
+            run_id,
+            "parallel_answer_evaluation_completed",
+            completed_batches=completed_batch_count,
+            batch_count=len(batches),
+            completed_answers=len(attempts_by_answer),
+            elapsed_seconds=round(
+                perf_counter() - evaluation_started,
+                3,
+            ),
+        )
 
     if (
         len(attempts_by_answer) != len(selected_answers)
@@ -1356,6 +1705,16 @@ def evaluate_solver(
         },
     )
     print(f"Jogos salvos em: {json_output_path}")
+    _append_runtime_log(
+        runtime_log_path,
+        run_id,
+        "run_completed",
+        total_games=len(selected_answers),
+        average_attempts=sum(ordered_attempts.values()) / len(selected_answers),
+        worst_case=worst_case,
+        output_json=str(json_output_path),
+        elapsed_seconds=round(perf_counter() - run_started, 3),
+    )
     return SolverEvaluation(
         average_attempts=sum(ordered_attempts.values()) / len(selected_answers),
         worst_case=worst_case,
@@ -1382,6 +1741,20 @@ def main(argv: Sequence[str] | None = None) -> None:
         default="entropy",
         help="entropy ranks guesses only; groups recursively analyzes feedback groups",
     )
+    play_parser.add_argument(
+        "--answer-list",
+        choices=("accepted", "solutions"),
+        default="accepted",
+        help=(
+            "possible answers: termo_palavras_aceitas or "
+            "termo_solucoes_possiveis"
+        ),
+    )
+    play_parser.add_argument(
+        "--max-k",
+        type=int,
+        help="maximum number of guesses ranked at each groups-search state",
+    )
     play_parser.add_argument("--profile", action="store_true")
 
     simulate_parser = commands.add_parser("simulate", help="simulate one answer")
@@ -1392,17 +1765,45 @@ def main(argv: Sequence[str] | None = None) -> None:
         default="entropy",
         help="entropy ranks guesses only; groups recursively analyzes feedback groups",
     )
+    simulate_parser.add_argument(
+        "--answer-list",
+        choices=("accepted", "solutions"),
+        default="accepted",
+        help=(
+            "possible answers: termo_palavras_aceitas or "
+            "termo_solucoes_possiveis"
+        ),
+    )
+    simulate_parser.add_argument(
+        "--max-k",
+        type=int,
+        help="maximum number of guesses ranked at each groups-search state",
+    )
     simulate_parser.add_argument("--profile", action="store_true")
 
     evaluate_parser = commands.add_parser(
         "evaluate",
-        help="evaluate every accepted answer (may take a long time)",
+        help="evaluate every answer in the selected answer list (may take a long time)",
     )
     evaluate_parser.add_argument(
         "--strategy",
         choices=("entropy", "groups", "deep"),
         default="entropy",
         help="entropy ranks guesses only; groups recursively analyzes feedback groups",
+    )
+    evaluate_parser.add_argument(
+        "--answer-list",
+        choices=("accepted", "solutions"),
+        default="accepted",
+        help=(
+            "possible answers: termo_palavras_aceitas or "
+            "termo_solucoes_possiveis"
+        ),
+    )
+    evaluate_parser.add_argument(
+        "--max-k",
+        type=int,
+        help="maximum number of guesses ranked at each groups-search state",
     )
     evaluate_parser.add_argument(
         "--sample-size",
@@ -1425,26 +1826,40 @@ def main(argv: Sequence[str] | None = None) -> None:
     evaluate_parser.add_argument("--profile", action="store_true")
 
     args = parser.parse_args(argv)
+    if args.max_k is not None and args.max_k <= 0:
+        raise ValueError("--max-k must be greater than zero.")
+    if args.max_k is not None and args.strategy == "entropy":
+        raise ValueError("--max-k can only be used with the groups strategy.")
+    helpers.MAX_K = args.max_k
+
     if args.command == "play":
         if args.profile:
             with helpers.profile_search() as profile:
-                interactive_play(args.strategy)
+                interactive_play(args.strategy, args.answer_list)
             _print_profile(profile)
         else:
-            interactive_play(args.strategy)
+            interactive_play(args.strategy, args.answer_list)
     elif args.command == "simulate":
         if args.profile:
             with helpers.profile_search() as profile:
-                attempts = simulate_game(args.answer, args.strategy)
+                attempts = simulate_game(
+                    args.answer,
+                    args.strategy,
+                    args.answer_list,
+                )
             _print_profile(profile)
         else:
-            attempts = simulate_game(args.answer, args.strategy)
+            attempts = simulate_game(
+                args.answer,
+                args.strategy,
+                args.answer_list,
+            )
         print(f"{args.answer.strip().upper()}: {attempts} guesses")
     else:
         if args.sample_size is not None:
             if args.sample_size <= 0:
                 raise ValueError("--sample-size must be greater than zero.")
-            all_answers = _load_answers()
+            all_answers = _load_answers(args.answer_list)
             if args.sample_size > len(all_answers):
                 raise ValueError(
                     f"--sample-size cannot exceed {len(all_answers)} answers."
@@ -1464,6 +1879,7 @@ def main(argv: Sequence[str] | None = None) -> None:
                     resume=not args.no_resume,
                     checkpoint_interval=args.checkpoint_interval,
                     workers=args.workers,
+                    answer_list=args.answer_list,
                 )
             _print_profile(profile)
         else:
@@ -1473,7 +1889,8 @@ def main(argv: Sequence[str] | None = None) -> None:
                 resume=not args.no_resume,
                 checkpoint_interval=args.checkpoint_interval,
                 workers=args.workers,
-                )
+                answer_list=args.answer_list,
+            )
         print(f"Games: {result.total_games}")
         print(f"Average guesses: {result.average_attempts:.3f}")
         print(f"Worst case: {result.worst_case}")

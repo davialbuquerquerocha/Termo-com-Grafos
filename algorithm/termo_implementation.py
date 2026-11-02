@@ -38,10 +38,21 @@ Library usage:
 from __future__ import annotations
 
 import sys
+import unicodedata
 
 
 class InvalidWordError(ValueError):
     """Raised when a word is not valid for the game."""
+
+
+def normalize_word(word: str) -> str:
+    """Uppercase a word and remove its diacritics for game comparisons."""
+    decomposed = unicodedata.normalize("NFD", word.upper())
+    return "".join(
+        character
+        for character in decomposed
+        if unicodedata.category(character) != "Mn"
+    )
 
 
 def load_wordlist(path: str) -> set[str]:
@@ -64,25 +75,29 @@ def score_guess(
     Returns ``(black, yellow, green)`` lists of ``(letter, position)`` tuples.
     Positions are 1-based.
     """
-    if len(answer) != len(guess):
+    normalized_answer = normalize_word(answer)
+    normalized_guess = normalize_word(guess)
+    if len(normalized_answer) != len(normalized_guess):
         raise ValueError("answer and guess must have the same length")
 
     remaining: dict[str, int] = {}
-    for letter in answer:
+    for letter in normalized_answer:
         remaining[letter] = remaining.get(letter, 0) + 1
 
-    marks: list[int] = [0] * len(guess)
+    marks: list[int] = [0] * len(normalized_guess)
 
     # First pass: exact matches are green and consume one occurrence
     # of that letter in the answer.
-    for index, (guess_letter, answer_letter) in enumerate(zip(guess, answer)):
+    for index, (guess_letter, answer_letter) in enumerate(
+        zip(normalized_guess, normalized_answer)
+    ):
         if guess_letter == answer_letter:
             marks[index] = 2
             remaining[guess_letter] -= 1
 
     # Second pass: misplaced letters are yellow while there are
     # unconsumed occurrences left, otherwise black.
-    for index, guess_letter in enumerate(guess):
+    for index, guess_letter in enumerate(normalized_guess):
         if marks[index] == 2:
             continue
         if remaining.get(guess_letter, 0) > 0:
@@ -113,9 +128,12 @@ def evaluate_guess(
         raise InvalidWordError(f"invalid answer word: {answer!r}")
     if not guess.isalpha():
         raise InvalidWordError(f"invalid guess {guess!r}: only letters are allowed")
-    if len(guess) != len(answer):
+    normalized_answer_length = len(normalize_word(answer))
+    normalized_guess_length = len(normalize_word(guess))
+    if normalized_guess_length != normalized_answer_length:
         raise InvalidWordError(
-            f"invalid guess {guess!r}: expected {len(answer)} letters, got {len(guess)}"
+            f"invalid guess {guess!r}: expected {normalized_answer_length} "
+            f"letters, got {normalized_guess_length}"
         )
     if guess not in wordlist:
         raise InvalidWordError(f"invalid guess {guess!r}: word is not in the word list")

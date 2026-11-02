@@ -52,6 +52,51 @@ class AlgorithmTests(unittest.TestCase):
         self.assertEqual(len(candidates), 3)
         self.assertIn("RAPAZ", candidates)
 
+    def test_accented_words_use_accent_insensitive_feedback_matrix(self) -> None:
+        words = ["AUDIO", "ÁUDIO", "RADIO"]
+
+        with tempfile.TemporaryDirectory() as directory:
+            word_list_path = Path(directory) / "words.txt"
+            word_list_path.write_text("\n".join(words), encoding="utf-8")
+            key: str | None = None
+            try:
+                with patch.object(
+                    partition_functions,
+                    "DATASET_PATH",
+                    word_list_path,
+                ):
+                    matrix, index, key = partition_functions._get_feedback_matrix(
+                        words
+                    )
+
+                    self.assertEqual(
+                        t.score_guess("ÁUDIO", "AUDIO")[2],
+                        [("A", 1), ("U", 2), ("D", 3), ("I", 4), ("O", 5)],
+                    )
+                    self.assertEqual(
+                        t.evaluate_guess("ÁUDIO", "AUDIO", {"AUDIO"})[2],
+                        [("A", 1), ("U", 2), ("D", 3), ("I", 4), ("O", 5)],
+                    )
+                    for guess in words:
+                        for answer in words:
+                            expected = partition_functions._feedback_code(
+                                t.score_guess(answer, guess)
+                            )
+                            self.assertEqual(
+                                int(matrix[index[guess], index[answer]]),
+                                expected,
+                            )
+            finally:
+                if key is not None:
+                    matrix = partition_functions._FEEDBACK_MATRIX_CACHE.pop(
+                        key,
+                        None,
+                    )
+                    if matrix is not None and getattr(matrix, "_mmap", None) is not None:
+                        matrix._mmap.close()
+                    partition_functions._WORD_INDEX_CACHE.pop(key, None)
+                    partition_functions._MATRIX_VALIDATED.discard(key)
+
     def test_feedback_matrix_matches_score_guess_on_3000_pairs(self) -> None:
         matrix, index, key = partition_functions._get_feedback_matrix(self.words)
         self.assertIn(key, partition_functions._MATRIX_VALIDATED)
