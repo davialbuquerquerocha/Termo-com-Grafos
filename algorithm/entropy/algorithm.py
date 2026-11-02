@@ -16,7 +16,7 @@ import re
 import tempfile
 import uuid
 from time import perf_counter
-from typing import Literal, NamedTuple
+from typing import Any, Literal, NamedTuple
 
 import numpy as np
 
@@ -46,6 +46,7 @@ _WORKER_ROOT_CANDIDATES: list[str] | None = None
 _WORKER_ROOT_DEPTH = 0
 _GROUP_PROGRESS_INTERVAL = 10_000_000
 _WORKER_GROUP_PROGRESS_COUNT = 0
+_RUNTIME_LOG_LOCK: Any = None
 _RUN_LOG_HEARTBEAT_SECONDS = 30
 
 
@@ -86,8 +87,14 @@ def _append_runtime_log(
         "event": event,
         **details,
     }
-    with path.open("a", encoding="utf-8") as log_file:
-        log_file.write(json.dumps(record, ensure_ascii=False) + "\n")
+    if _RUNTIME_LOG_LOCK is None:
+        with path.open("a", encoding="utf-8") as log_file:
+            log_file.write(json.dumps(record, ensure_ascii=False) + "\n")
+        return
+
+    with _RUNTIME_LOG_LOCK:
+        with path.open("a", encoding="utf-8") as log_file:
+            log_file.write(json.dumps(record, ensure_ascii=False) + "\n")
 
 
 def _validate_strategy(strategy: str) -> Strategy:
@@ -615,11 +622,14 @@ def _initialize_evaluation_worker(
     root_candidates: list[str] | None = None,
     root_depth: int = 0,
     max_k: int | None = None,
+    runtime_log_lock: Any = None,
 ) -> None:
     global _WORKER_ANSWERS, _WORKER_STRATEGY, _WORKER_CONTEXT
     global _WORKER_MEMO_PATH, _WORKER_INITIAL_GUESS_INDEX, _WORKER_PROFILE
     global _WORKER_ROOT_CANDIDATES, _WORKER_ROOT_DEPTH
     global _WORKER_GROUP_PROGRESS_COUNT
+    global _RUNTIME_LOG_LOCK
+    _RUNTIME_LOG_LOCK = runtime_log_lock
     helpers.MAX_K = max_k
     partition_functions.DATASET_PATH = dataset_path
     process_name = multiprocessing.current_process().name
@@ -1257,6 +1267,7 @@ def evaluate_solver(
     answer_list: AnswerList = "accepted",
 ) -> SolverEvaluation:
     """Evaluate answers with resumable results and optional CPU processes."""
+    global _RUNTIME_LOG_LOCK
     strategy = _validate_strategy(strategy)
     if checkpoint_interval <= 0:
         raise ValueError("checkpoint_interval must be greater than zero.")
@@ -1500,6 +1511,7 @@ def evaluate_solver(
                 total_answers=len(selected_answers),
             )
     elif pending_answers:
+        _RUNTIME_LOG_LOCK = multiprocessing.get_context("spawn").Lock()
         worker_memo_base = partition_functions.DATASET_PATH.with_name(
             "entropy_memo_worker.sqlite3"
         )
@@ -1530,7 +1542,10 @@ def evaluate_solver(
                 worker_count,
                 initial_guess_index,
                 helpers._PROFILE is not None,
+                None,
+                0,
                 helpers.MAX_K,
+                _RUNTIME_LOG_LOCK,
             ),
         ) as executor:
             futures = {

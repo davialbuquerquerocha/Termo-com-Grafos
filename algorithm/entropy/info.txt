@@ -47,7 +47,7 @@ A avaliacao pode usar varios processos da CPU. O padrao e um worker (execucao
 serial); escolha a quantidade com --workers:
 
     python -c "from algorithm.entropy.algorithm import main; main()" evaluate --strategy entropy --workers 4
-    python -c "from algorithm.entropy.algorithm import main; main()" evaluate --strategy groups --workers 4 --profile
+      
 
 O paralelismo distribui as respostas avaliadas entre processos. Na busca do
 primeiro palpite de groups, os grupos de feedback desse palpite sao distribuidos

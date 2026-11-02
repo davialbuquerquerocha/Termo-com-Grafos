@@ -175,6 +175,25 @@ class EntropyAlgorithmTests(unittest.TestCase):
                     helpers.ENTROPY_MARGIN = 100.0
                     bounded = helpers._rank_state(words[:4], 0, context)
                     self.assertEqual(len(bounded), 2)
+                    candidate_indices = np.arange(4)
+                    entropies = np.asarray(
+                        [
+                            -sum(
+                                (count / 4) * np.log2(count / 4)
+                                for count in np.bincount(
+                                    context[2][guess_index, candidate_indices],
+                                    minlength=243,
+                                )
+                                if count
+                            )
+                            for guess_index in range(len(words))
+                        ]
+                    )
+                    expected_bounded = np.argsort(
+                        -entropies,
+                        kind="stable",
+                    )[:2].tolist()
+                    self.assertEqual(bounded, expected_bounded)
 
                     helpers.EXHAUSTIVE_LIMIT = 4
                     exhaustive = helpers._rank_state(
@@ -208,6 +227,16 @@ class EntropyAlgorithmTests(unittest.TestCase):
             patch.object(helpers, "_guess_count", return_value=100),
         ):
             self.assertEqual(helpers.k_by_size(5), 2)
+
+    def test_stable_top_k_matches_full_stable_sort(self) -> None:
+        rng = np.random.default_rng(2026)
+        values = rng.integers(0, 8, size=1_000).astype(np.float64)
+
+        for limit in (0, 1, 3, 25, len(values), len(values) + 1):
+            with self.subTest(limit=limit):
+                expected = np.argsort(-values, kind="stable")[:limit]
+                actual = helpers._stable_top_k_indices(values, limit)
+                np.testing.assert_array_equal(actual, expected)
 
     def test_groups_cli_sets_max_k(self) -> None:
         with (
@@ -414,6 +443,7 @@ class EntropyAlgorithmTests(unittest.TestCase):
             helpers.FACTOR,
             helpers.MIN_K,
             helpers.ENTROPY_MARGIN,
+            helpers.MAX_K,
         )
 
         with tempfile.TemporaryDirectory() as directory:
@@ -448,7 +478,7 @@ class EntropyAlgorithmTests(unittest.TestCase):
                     self.assertTrue(helpers._BEST_MOVE_CACHE)
                     self.assertTrue(
                         all(
-                            key[2:8] == helpers._search_config_key()
+                            key[2:9] == helpers._search_config_key()
                             for key in helpers._BEST_MOVE_CACHE
                         )
                     )
@@ -474,6 +504,7 @@ class EntropyAlgorithmTests(unittest.TestCase):
                     helpers.FACTOR,
                     helpers.MIN_K,
                     helpers.ENTROPY_MARGIN,
+                    helpers.MAX_K,
                 ) = original_settings
 
     def test_best_move_discards_memos_from_other_search_settings(self) -> None:
@@ -490,6 +521,7 @@ class EntropyAlgorithmTests(unittest.TestCase):
             helpers.FACTOR,
             helpers.MIN_K,
             helpers.ENTROPY_MARGIN,
+            helpers.MAX_K,
         )
         original_cache_config = helpers._BEST_MOVE_CACHE_CONFIG
 
@@ -513,6 +545,7 @@ class EntropyAlgorithmTests(unittest.TestCase):
                     helpers.MIN_K,
                     helpers.ENTROPY_MARGIN,
                     helpers.SEARCH_ALGORITHM_VERSION,
+                    helpers.MAX_K,
                 )
                 stale_key = ("stale", 0, *stale_config, state_bytes)
                 helpers._BEST_MOVE_CACHE[current_key] = (0, 1.0)
@@ -533,6 +566,7 @@ class EntropyAlgorithmTests(unittest.TestCase):
                 helpers.FACTOR,
                 helpers.MIN_K,
                 helpers.ENTROPY_MARGIN,
+                helpers.MAX_K,
             ) = original_settings
 
     def test_pruned_infinite_guess_cost_is_not_memoized(self) -> None:

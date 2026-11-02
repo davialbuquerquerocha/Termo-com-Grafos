@@ -97,7 +97,10 @@ def _rank_partition_guesses(
         ]
         if not guess_indices:
             continue
-        feedbacks = matrix[np.asarray(guess_indices), :][:, answer_indices]
+        feedbacks = matrix[
+            np.asarray(guess_indices)[:, None],
+            answer_indices,
+        ]
         offsets = (
             np.arange(len(guess_indices), dtype=np.int32)[:, None]
             * _FEEDBACK_PATTERN_COUNT
@@ -373,7 +376,10 @@ def _choose_partition_guess(
         if not guess_indices:
             continue
 
-        feedbacks = matrix[np.asarray(guess_indices), :][:, answer_indices]
+        feedbacks = matrix[
+            np.asarray(guess_indices)[:, None],
+            answer_indices,
+        ]
         offsets = (
             np.arange(len(guess_indices), dtype=np.int32)[:, None]
             * _FEEDBACK_PATTERN_COUNT

@@ -486,6 +486,27 @@ def k_by_size(n: int, depth: int = 0) -> int:
     return min(selected_k, MAX_K) if MAX_K is not None else selected_k
 
 
+def _stable_top_k_indices(values: np.ndarray, limit: int) -> np.ndarray:
+    """Return indices of the largest values, preserving stable tie order."""
+    if limit <= 0 or not len(values):
+        return np.empty(0, dtype=np.intp)
+    if limit >= len(values):
+        return np.argsort(-values, kind="stable")
+
+    threshold_index = len(values) - limit
+    threshold = np.partition(values, threshold_index)[threshold_index]
+    greater_indices = np.flatnonzero(values > threshold)
+    equal_indices = np.flatnonzero(values == threshold)
+    selected_indices = np.concatenate(
+        (
+            greater_indices,
+            equal_indices[:limit - len(greater_indices)],
+        )
+    )
+    selected_order = np.argsort(-values[selected_indices], kind="stable")
+    return selected_indices[selected_order]
+
+
 def _rank_state(
     candidates: list[str],
     depth: int,
@@ -498,14 +519,14 @@ def _rank_state(
         count=len(candidates),
     )
     vocab_size = _guess_count(str(partition_functions.DATASET_PATH))
-    eligible_indices = np.asarray(
-        sorted(
-            {
-                *range(vocab_size),
-                *candidate_indices.tolist(),
-            }
-        ),
-        dtype=np.intp,
+    extra_candidate_indices = np.unique(
+        candidate_indices[candidate_indices >= vocab_size]
+    )
+    eligible_indices = np.concatenate(
+        (
+            np.arange(vocab_size, dtype=np.intp),
+            extra_candidate_indices,
+        )
     )
     entropies = np.empty(len(eligible_indices), dtype=np.float64)
     candidate_count = len(candidates)
@@ -538,10 +559,10 @@ def _rank_state(
             - np.sum(counts * log_counts, axis=1) / candidate_count
         )
 
-    order = np.argsort(-entropies, kind="stable")
-    if len(candidates) > EXHAUSTIVE_LIMIT and len(order):
-        order = order[
-            entropies[order] >= entropies[order[0]] - ENTROPY_MARGIN
+    eligible_offsets = np.arange(len(eligible_indices), dtype=np.intp)
+    if len(candidates) > EXHAUSTIVE_LIMIT and len(eligible_offsets):
+        eligible_offsets = eligible_offsets[
+            entropies >= entropies.max() - ENTROPY_MARGIN
         ]
     guess_limit = (
         len(eligible_indices)
@@ -552,7 +573,9 @@ def _rank_state(
         if MAX_K <= 0:
             raise ValueError("MAX_K must be greater than zero.")
         guess_limit = min(guess_limit, MAX_K)
-    return eligible_indices[order[:guess_limit]].tolist()
+    filtered_entropies = entropies[eligible_offsets]
+    order = _stable_top_k_indices(filtered_entropies, guess_limit)
+    return eligible_indices[eligible_offsets[order]].tolist()
 
 
 def _evaluate_guess(
@@ -781,7 +804,7 @@ def ranking_with_context(
             - np.sum(counts * log_counts, axis=1) / candidate_count
         )
 
-    ranked_indices = np.argsort(-entropies, kind="stable")[:K].tolist()
+    ranked_indices = _stable_top_k_indices(entropies, K).tolist()
     candidate_guess_indices = [
         word_indices[candidate] for candidate in normalized_candidates
     ]
