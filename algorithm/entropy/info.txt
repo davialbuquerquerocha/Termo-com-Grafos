@@ -55,6 +55,12 @@ avaliacoes simultaneas com a mesma lista.
 Durante a busca inicial, o programa mostra a palavra base que esta sendo
 avaliada e informa a cada 10.000.000 grupos de feedback recursivos concluidos.
 Tambem identifica cada palpite concluido na etapa paralela.
+No modo groups, a busca descarta estrategias que nao consigam resolver todos os
+ramos em ate seis tentativas; entre as estrategias viaveis, minimiza o custo
+esperado. Em estados grandes, a lista de palpites examinados e limitada pela
+classificacao de entropia: se nenhuma estrategia viavel for encontrada, isso
+pode significar que os palpites considerados nao bastaram, nao que seja
+impossivel resolver em seis usando qualquer palavra do vocabulario.
 
 Teste uma amostra deterministica antes da avaliacao completa. A amostra limita
 as respostas avaliadas, mas o solver continua usando toda a lista aceita como

@@ -81,6 +81,7 @@ def _validate_strategy(strategy: str) -> Strategy:
 def _search_settings() -> dict[str, int | float]:
     return {
         "algorithm_version": helpers.SEARCH_ALGORITHM_VERSION,
+        "max_attempts": helpers.MAX_ATTEMPTS,
         "exhaustive_limit": helpers.EXHAUSTIVE_LIMIT,
         "budget": helpers.BUDGET,
         "factor": helpers.FACTOR,
@@ -139,21 +140,28 @@ def best_move(
         raise ValueError("candidates must not be empty.")
     context = _search_context(normalized_candidates)
     if workers == 1:
-        return helpers._best_move(normalized_candidates, depth, context)
-    return helpers._best_move(
-        normalized_candidates,
-        depth,
-        context,
-        parallel_evaluator=lambda root_candidates, ranked_guesses, root_depth, root_context: (
-            _parallel_root_evaluator(
-                root_candidates,
-                ranked_guesses,
-                root_depth,
-                root_context,
-                workers,
-            )
-        ),
-    )
+        result = helpers._best_move(normalized_candidates, depth, context)
+    else:
+        result = helpers._best_move(
+            normalized_candidates,
+            depth,
+            context,
+            parallel_evaluator=lambda root_candidates, ranked_guesses, root_depth, root_context: (
+                _parallel_root_evaluator(
+                    root_candidates,
+                    ranked_guesses,
+                    root_depth,
+                    root_context,
+                    workers,
+                )
+            ),
+        )
+    if result[0] < 0 or not math.isfinite(result[1]):
+        raise RuntimeError(
+            "No groups strategy can guarantee solving within "
+            f"{helpers.MAX_ATTEMPTS} guesses from this candidate state."
+        )
+    return result
 
 
 def evaluate_guess(i: int, candidates: list[str], limit: float) -> float:
@@ -273,7 +281,13 @@ def _choose_guess_with_context(
     context: _SearchContext,
 ) -> int:
     if strategy == "deep":
-        return helpers._best_move(candidates, depth, context)[0]
+        guess_index, _ = helpers._best_move(candidates, depth, context)
+        if guess_index < 0:
+            raise RuntimeError(
+                "No groups strategy can guarantee solving within "
+                f"{helpers.MAX_ATTEMPTS} guesses from this candidate state."
+            )
+        return guess_index
 
     word_list_path = partition_functions.DATASET_PATH
     word_list_stat = word_list_path.stat()
@@ -348,6 +362,11 @@ def interactive_play(strategy: Strategy = "entropy") -> str:
                     depth,
                     context,
                 )
+                if guess_index < 0:
+                    raise RuntimeError(
+                        "No groups strategy can guarantee solving within "
+                        f"{helpers.MAX_ATTEMPTS} guesses from this candidate state."
+                    )
             else:
                 guess_index = _choose_guess_with_context(
                     candidates,
@@ -472,6 +491,11 @@ def _simulate_game_with_context(
         if len(matching_indices) == len(candidates):
             raise RuntimeError(
                 f"Guess {guesses[guess_index]!r} did not narrow the candidate set."
+            )
+        if strategy == "deep" and attempts >= helpers.MAX_ATTEMPTS:
+            raise RuntimeError(
+                "The groups strategy failed to solve the answer within "
+                f"{helpers.MAX_ATTEMPTS} guesses."
             )
         candidates = [guesses[int(index)] for index in matching_indices]
         guess_index = _choose_guess_with_context(

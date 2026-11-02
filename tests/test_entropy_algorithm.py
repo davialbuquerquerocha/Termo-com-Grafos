@@ -106,6 +106,73 @@ class EntropyAlgorithmTests(unittest.TestCase):
         self.assertEqual(result, (1, 1.5))
         best_move.assert_called_once_with(words, 3, context)
 
+    def test_best_move_rejects_states_after_six_attempts(self) -> None:
+        words = ["AAAAA"]
+        context = (
+            words,
+            {"AAAAA": 0},
+            np.asarray([[242]], dtype=np.uint8),
+            "test",
+        )
+
+        result = helpers._best_move(words, helpers.MAX_ATTEMPTS, context)
+
+        self.assertEqual(result[0], -1)
+        self.assertTrue(np.isinf(result[1]))
+
+    def test_best_move_rejects_a_state_with_no_feasible_guess(self) -> None:
+        words = ["AAAAA", "BBBBB", "CCCCC"]
+        context = (
+            words,
+            {word: index for index, word in enumerate(words)},
+            np.asarray(
+                [[242, 0, 0], [0, 242, 0], [0, 0, 242]],
+                dtype=np.uint8,
+            ),
+            "test",
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            memo_path = Path(directory) / "memo.sqlite3"
+            helpers.configure_memo_store(memo_path, "test")
+            try:
+                with (
+                    patch.object(helpers, "_rank_state", return_value=[0]),
+                    patch.object(
+                        helpers,
+                        "_evaluate_guess",
+                        return_value=float("inf"),
+                    ),
+                ):
+                    result = helpers._best_move(
+                        words,
+                        helpers.MAX_ATTEMPTS - 1,
+                        context,
+                    )
+
+                self.assertEqual(result[0], -1)
+                self.assertTrue(np.isinf(result[1]))
+            finally:
+                helpers.close_memo_store()
+
+    def test_best_move_raises_when_no_six_guess_strategy_exists(self) -> None:
+        words = ["AAAAA", "BBBBB"]
+        context = (
+            words,
+            {word: index for index, word in enumerate(words)},
+            np.zeros((2, 2), dtype=np.uint8),
+            "test",
+        )
+        with (
+            patch.object(solver, "_search_context", return_value=context),
+            patch.object(
+                helpers,
+                "_best_move",
+                return_value=(-1, float("inf")),
+            ),
+            self.assertRaisesRegex(RuntimeError, "within 6 guesses"),
+        ):
+            solver.best_move(words)
+
     def test_simulation_increments_search_depth_after_each_guess(self) -> None:
         words = ["AAAAA", "BBBBB"]
         context = (
@@ -784,6 +851,10 @@ class EntropyAlgorithmTests(unittest.TestCase):
                         result.average_attempts,
                     )
                     self.assertEqual(result.total_games, len(words))
+                    self.assertLessEqual(
+                        result.worst_case,
+                        helpers.MAX_ATTEMPTS,
+                    )
 
                     helpers.EXHAUSTIVE_LIMIT = 5
                     helpers.BUDGET = 20
@@ -803,6 +874,10 @@ class EntropyAlgorithmTests(unittest.TestCase):
                     self.assertAlmostEqual(
                         bounded_cost,
                         bounded_result.average_attempts,
+                    )
+                    self.assertLessEqual(
+                        bounded_result.worst_case,
+                        helpers.MAX_ATTEMPTS,
                     )
             finally:
                 helpers.close_memo_store()

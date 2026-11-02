@@ -19,8 +19,9 @@ BUDGET = 200_000
 FACTOR = 4
 MIN_K = 5
 ENTROPY_MARGIN = 1.0
+MAX_ATTEMPTS = 6
 RANKING_CHUNK_SIZE = 256
-SEARCH_ALGORITHM_VERSION = 3
+SEARCH_ALGORITHM_VERSION = 4
 MEMO_MEMORY_LIMIT = 20_000
 MEMO_COMMIT_INTERVAL = 1_000
 MEMO_BUSY_TIMEOUT_SECONDS = 300
@@ -582,6 +583,9 @@ def _best_move(
     ] | None = None,
     group_progress_callback: Callable[[], None] | None = None,
 ) -> tuple[int, float]:
+    if depth >= MAX_ATTEMPTS:
+        return -1, float("inf")
+
     _, _, _, word_key = context
     if _MEMO_CONNECTION is None:
         raise RuntimeError("The persistent search memo has not been configured.")
@@ -650,11 +654,13 @@ def _best_move(
                     best_guess = guess_index
                     best_cost = cost
         if best_guess < 0:
-            raise RuntimeError("No guess produced a valid partition.")
+            return -1, float("inf")
         result = best_guess, best_cost
 
-    if not np.isfinite(result[1]):
-        raise RuntimeError("A pruned or non-finite search result cannot be memoized.")
+    if result[0] < 0 or not np.isfinite(result[1]):
+        return -1, float("inf")
+    if result[1] <= 0:
+        raise RuntimeError("A non-positive search result cannot be memoized.")
     _memo_put(state_key, result)
     return result
 
