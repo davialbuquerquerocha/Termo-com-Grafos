@@ -154,6 +154,68 @@ class EntropyAlgorithmTests(unittest.TestCase):
             finally:
                 helpers.close_memo_store()
 
+    def test_best_move_persists_infeasible_states_in_memo(self) -> None:
+        words = ["AAAAA", "BBBBB"]
+        context = (
+            words,
+            {word: index for index, word in enumerate(words)},
+            np.asarray([[242, 0], [0, 242]], dtype=np.uint8),
+            "test",
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            memo_path = Path(directory) / "memo.sqlite3"
+            helpers.configure_memo_store(memo_path, "test")
+            try:
+                first_result = helpers._best_move(
+                    words,
+                    helpers.MAX_ATTEMPTS - 1,
+                    context,
+                )
+                helpers.close_memo_store()
+                helpers.configure_memo_store(memo_path, "test")
+                with helpers.profile_search() as profile:
+                    second_result = helpers._best_move(
+                        words,
+                        helpers.MAX_ATTEMPTS - 1,
+                        context,
+                    )
+
+                self.assertEqual(first_result[0], -1)
+                self.assertTrue(np.isinf(first_result[1]))
+                self.assertEqual(second_result, first_result)
+                self.assertEqual(profile.states_computed, 0)
+                self.assertEqual(profile.memo_hits, 1)
+                self.assertEqual(helpers.memo_store_stats()["database_rows"], 1)
+            finally:
+                helpers.close_memo_store()
+
+    def test_evaluate_guess_stops_after_an_infeasible_feedback_group(self) -> None:
+        words = ["AAAAA", "BBBBB", "CCCCC"]
+        context = (
+            words,
+            {word: index for index, word in enumerate(words)},
+            np.asarray(
+                [[242, 0, 1], [0, 242, 2], [1, 2, 242]],
+                dtype=np.uint8,
+            ),
+            "test",
+        )
+        with patch.object(
+            helpers,
+            "_best_move",
+            return_value=(-1, float("inf")),
+        ) as best_move:
+            cost = helpers._evaluate_guess(
+                0,
+                words,
+                float("inf"),
+                0,
+                context,
+            )
+
+        self.assertTrue(np.isinf(cost))
+        self.assertEqual(best_move.call_count, 1)
+
     def test_best_move_raises_when_no_six_guess_strategy_exists(self) -> None:
         words = ["AAAAA", "BBBBB"]
         context = (
@@ -717,6 +779,7 @@ class EntropyAlgorithmTests(unittest.TestCase):
         output = io.StringIO()
 
         def evaluate_with_progress(*args, **kwargs) -> float:
+            self.assertEqual(len(args), 5)
             callback = kwargs["group_progress_callback"]
             for _ in range(200):
                 callback()

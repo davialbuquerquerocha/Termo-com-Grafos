@@ -21,7 +21,9 @@ MIN_K = 5
 ENTROPY_MARGIN = 1.0
 MAX_ATTEMPTS = 6
 RANKING_CHUNK_SIZE = 256
-SEARCH_ALGORITHM_VERSION = 4
+SEARCH_ALGORITHM_VERSION = 5
+_INFEASIBLE_MEMO_RESULT = (-1, -1.0)
+_INFEASIBLE_RESULT = (-1, float("inf"))
 MEMO_MEMORY_LIMIT = 20_000
 MEMO_COMMIT_INTERVAL = 1_000
 MEMO_BUSY_TIMEOUT_SECONDS = 300
@@ -232,6 +234,8 @@ def _memo_get(
         _BEST_MOVE_CACHE.move_to_end(state_key)
         if _PROFILE is not None:
             _PROFILE.memo_hits += 1
+        if cached == _INFEASIBLE_MEMO_RESULT:
+            return _INFEASIBLE_RESULT
         return cached
 
     if _PROFILE is not None:
@@ -253,6 +257,11 @@ def _memo_get(
         return None
 
     result = int(row[0]), float(row[1])
+    if result == _INFEASIBLE_MEMO_RESULT:
+        _remember_state(state_key, result)
+        if _PROFILE is not None:
+            _PROFILE.memo_hits += 1
+        return _INFEASIBLE_RESULT
     if result[0] < 0 or not np.isfinite(result[1]) or result[1] <= 0:
         raise RuntimeError("The persisted search memo contains an invalid result.")
     _remember_state(state_key, result)
@@ -276,7 +285,12 @@ def _memo_put(
     result: tuple[int, float],
 ) -> None:
     global _MEMO_PENDING_WRITES
-    _remember_state(state_key, result)
+    persisted_result = (
+        _INFEASIBLE_MEMO_RESULT
+        if result[0] < 0 and np.isinf(result[1])
+        else result
+    )
+    _remember_state(state_key, persisted_result)
     word_key, depth, *rest = state_key
     config_key = _serialized_config_key()
     candidate_indices = rest[-1]
@@ -301,7 +315,7 @@ def _memo_put(
             guess_index = excluded.guess_index,
             expected_cost = excluded.expected_cost
         """,
-        (word_key, depth, config_key, candidate_indices, *result),
+        (word_key, depth, config_key, candidate_indices, *persisted_result),
     )
     _MEMO_PENDING_WRITES += 1
     if _PROFILE is not None:
@@ -567,6 +581,8 @@ def _evaluate_guess(
         )
         if group_progress_callback is not None:
             group_progress_callback()
+        if not np.isfinite(group_cost):
+            return float("inf")
         expected_cost += len(group) * group_cost / len(candidates)
         if expected_cost > limit:
             return float("inf")
@@ -584,7 +600,7 @@ def _best_move(
     group_progress_callback: Callable[[], None] | None = None,
 ) -> tuple[int, float]:
     if depth >= MAX_ATTEMPTS:
-        return -1, float("inf")
+        return _INFEASIBLE_RESULT
 
     _, _, _, word_key = context
     if _MEMO_CONNECTION is None:
@@ -617,7 +633,9 @@ def _best_move(
 
     if _PROFILE is not None:
         _PROFILE.states_computed += 1
-    if len(candidates) == 1:
+    if depth == MAX_ATTEMPTS - 1 and len(candidates) > 1:
+        result = _INFEASIBLE_RESULT
+    elif len(candidates) == 1:
         result = word_indices[candidates[0]], 1.0
     elif len(candidates) == 2:
         result = word_indices[candidates[0]], 1.5
@@ -654,11 +672,13 @@ def _best_move(
                     best_guess = guess_index
                     best_cost = cost
         if best_guess < 0:
-            return -1, float("inf")
-        result = best_guess, best_cost
+            result = _INFEASIBLE_RESULT
+        else:
+            result = best_guess, best_cost
 
     if result[0] < 0 or not np.isfinite(result[1]):
-        return -1, float("inf")
+        _memo_put(state_key, _INFEASIBLE_RESULT)
+        return _INFEASIBLE_RESULT
     if result[1] <= 0:
         raise RuntimeError("A non-positive search result cannot be memoized.")
     _memo_put(state_key, result)
