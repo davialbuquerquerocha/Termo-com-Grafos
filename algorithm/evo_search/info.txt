@@ -13,10 +13,10 @@ Na raiz do projeto, rode:
 
     python algorithm\evo_search\evo_search.py
 
-Por padrao, o treino usa dataset\palavras_aceitas500.txt. Para usar outra lista
+Por padrao, o treino usa dataset\words\palavras_aceitas500.txt. Para usar outra lista
 de palavras aceitas, informe o caminho como argumento:
 
-    python algorithm\evo_search\evo_search.py dataset\palavras_aceitas100.txt
+    python algorithm\evo_search\evo_search.py dataset\words\palavras_aceitas100.txt
 
 O programa faz uma busca em grade inicial quando GRID_SEARCH esta ativo e
 depois executa a estrategia evolutiva (ES). As avaliacoes usam
@@ -30,9 +30,9 @@ ARQUIVOS
   encontrada e novamente ao final do treino.
 - training_log.csv: historico das propostas avaliadas; e sobrescrito a cada
   novo treino.
-- dataset\letters_position.csv: contagens usadas para construir as estatisticas
+- dataset\statistics\letters_position.csv: contagens usadas para construir as estatisticas
   de letras e posicoes.
-- dataset\palavras_aceitas500.txt: lista padrao de respostas e palpites.
+- dataset\words\palavras_aceitas500.txt: lista padrao de respostas e palpites.
 
 Os parametros ativos, incluindo MAX_ITERATIONS, PATIENCE, GRID_SEARCH,
 MAX_GUESSES e PARALLEL_WORKERS, estao declarados no inicio de evo_search.py.

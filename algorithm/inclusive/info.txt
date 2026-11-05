@@ -19,7 +19,7 @@ cada posicao:
     from algorithm import functions as common
     from algorithm.inclusive import inclusive_algorithm, functions as heuristics
 
-    words = common.file_to_list("dataset/termo_palavras_aceitas.txt")
+    words = common.file_to_list("dataset/words/termo_palavras_aceitas.txt")
     attempts = inclusive_algorithm(
         words,
         "TERMO",

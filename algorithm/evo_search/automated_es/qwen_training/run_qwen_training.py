@@ -74,13 +74,17 @@ def count_words(path: Path) -> int:
     return len({line.strip().lower() for line in read_text(path).splitlines() if line.strip()})
 
 
-def resolve_word_source(conf_values: dict) -> Path:
-    """Mirror of evo_search2's word-source resolution (for word counting)."""
+def resolve_dataset_dir(conf_values: dict) -> Path:
     dataset_value = str(conf_values.get("path_dataset_dir") or "")
-    dataset_dir = (
+    return (
         Path(dataset_value) if Path(dataset_value).is_absolute()
         else PROJECT_DIR / dataset_value
-    ) if dataset_value else PROJECT_DIR.parents[1] / "dataset"
+    ) if dataset_value else PROJECT_DIR / "dataset"
+
+
+def resolve_word_source(conf_values: dict) -> Path:
+    """Mirror of evo_search2's word-source resolution (for word counting)."""
+    dataset_dir = resolve_dataset_dir(conf_values)
 
     def resolve(value: str, fallback_name: str) -> Path:
         if value:
@@ -88,10 +92,16 @@ def resolve_word_source(conf_values: dict) -> Path:
             return path if path.is_absolute() else PROJECT_DIR / path
         return dataset_dir / fallback_name
 
-    termo = resolve(str(conf_values.get("path_termo_words") or ""), "termo_palavras_aceitas.txt")
+    termo = resolve(
+        str(conf_values.get("path_termo_words") or ""),
+        "words/termo_palavras_aceitas.txt",
+    )
     if termo.exists():
         return termo
-    return resolve(str(conf_values.get("path_accepted_words") or ""), "palavras_aceitas500.txt")
+    return resolve(
+        str(conf_values.get("path_accepted_words") or ""),
+        "words/palavras_aceitas500.txt",
+    )
 
 
 def load_current_conf() -> tuple[dict, str]:
@@ -480,9 +490,10 @@ def preflight(args: argparse.Namespace) -> tuple[dict, str, int]:
     missing = [str(p) for p in (EVO_SCRIPT, PROJECT_DIR / "pesos.csv") if not p.exists()]
     conf_values, conf_text = load_current_conf()
     source = resolve_word_source(conf_values)
-    dataset_dir = source.parent
-    if not Path(dataset_dir / "letters_position.csv").exists():
-        missing.append(str(dataset_dir / "letters_position.csv"))
+    dataset_dir = resolve_dataset_dir(conf_values)
+    letters_path = Path(dataset_dir / "statistics" / "letters_position.csv")
+    if not letters_path.exists():
+        missing.append(str(letters_path))
     if missing:
         raise SystemExit("missing required file(s):\n  - " + "\n  - ".join(missing))
     if not source.exists():

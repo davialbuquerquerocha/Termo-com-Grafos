@@ -11,11 +11,14 @@ from algorithm import termo_implementation as t
 
 Feedback = common.Feedback
 VOWELS = frozenset("AEIOU")
-DATASET_PATH = (
-    Path(__file__).resolve().parent.parent.parent
-    / "dataset"
-    / "termo_palavras_aceitas.txt"
-)
+DATASET_DIR = Path(__file__).resolve().parent.parent.parent / "dataset"
+WORDS_DIR = DATASET_DIR / "words"
+STATISTICS_DIR = DATASET_DIR / "statistics"
+RESULTS_DIR = DATASET_DIR / "results"
+CACHE_DIR = DATASET_DIR / "cache"
+ENTROPY_CACHE_DIR = CACHE_DIR / "entropy"
+FEEDBACK_MATRIX_CACHE_DIR = CACHE_DIR / "feedback-matrices"
+DATASET_PATH = WORDS_DIR / "termo_palavras_aceitas.txt"
 
 FeedbackMatrix = np.ndarray
 
@@ -304,7 +307,13 @@ def _get_feedback_matrix(word_list: list[str]) -> tuple[FeedbackMatrix, dict[str
     if key in _FEEDBACK_MATRIX_CACHE:
         return _FEEDBACK_MATRIX_CACHE[key], _WORD_INDEX_CACHE[key], key
 
-    cache_path = DATASET_PATH.parent / f"feedback_matrix_{key}.npy"
+    cache_dir = (
+        FEEDBACK_MATRIX_CACHE_DIR
+        if DATASET_PATH.parent == WORDS_DIR
+        else DATASET_PATH.parent
+    )
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    cache_path = cache_dir / f"feedback_matrix_{key}.npy"
     matrix: FeedbackMatrix | None = None
     if cache_path.exists():
         try:

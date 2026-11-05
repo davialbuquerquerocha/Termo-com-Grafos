@@ -109,16 +109,43 @@ def _validate_strategy(strategy: str) -> Strategy:
 
 
 def _search_settings() -> dict[str, int | float | None]:
+    effective_min_k = (
+        min(helpers.MIN_K, helpers.MAX_K)
+        if helpers.MAX_K is not None
+        else helpers.MIN_K
+    )
     return {
         "algorithm_version": helpers.SEARCH_ALGORITHM_VERSION,
         "max_attempts": helpers.MAX_ATTEMPTS,
         "exhaustive_limit": helpers.EXHAUSTIVE_LIMIT,
         "budget": helpers.BUDGET,
         "factor": helpers.FACTOR,
-        "min_k": helpers.MIN_K,
+        "min_k": effective_min_k,
+        "configured_min_k": helpers.MIN_K,
         "max_k": helpers.MAX_K,
         "entropy_margin": helpers.ENTROPY_MARGIN,
     }
+
+
+def _search_settings_match(saved_settings: object) -> bool:
+    current_settings = _search_settings()
+    if saved_settings == current_settings:
+        return True
+
+    legacy_settings = current_settings.copy()
+    legacy_settings["min_k"] = legacy_settings.pop("configured_min_k")
+    return saved_settings == legacy_settings
+
+
+def _entropy_cache_path(filename: str) -> Path:
+    word_list_path = partition_functions.DATASET_PATH
+    cache_dir = (
+        partition_functions.ENTROPY_CACHE_DIR
+        if word_list_path.parent == partition_functions.WORDS_DIR
+        else word_list_path.parent
+    )
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    return cache_dir / filename
 
 
 def _normalize_candidates(candidates: list[str]) -> list[str]:
@@ -166,7 +193,7 @@ def _search_context(
     helpers.configure_memo_store(
         memo_path
         if memo_path is not None
-        else partition_functions.DATASET_PATH.with_name("entropy_memo.sqlite3"),
+        else _entropy_cache_path("entropy_memo.sqlite3"),
         word_key,
     )
     return guesses, word_indices, matrix, word_key
@@ -242,9 +269,7 @@ def choose_first_guess(
     if not candidates:
         raise ValueError("The answer list must not be empty.")
 
-    cache_path = word_list_path.with_name(
-        f"entropy_first_guess_{answer_list}.json"
-    )
+    cache_path = _entropy_cache_path(f"entropy_first_guess_{answer_list}.json")
     if cache_path.exists():
         cached_data = json.loads(cache_path.read_text(encoding="utf-8"))
         if not isinstance(cached_data, dict):
@@ -253,7 +278,7 @@ def choose_first_guess(
             if (
                 cached_data.get("answer_list") != answer_list
                 or cached_data.get("guess_list_hash") != guess_list_hash
-                or cached_data.get("search_settings") != _search_settings()
+                or not _search_settings_match(cached_data.get("search_settings"))
             ):
                 cached_data = {}
         if cached_data.get("word_list_hash") == word_list_hash:
@@ -365,12 +390,11 @@ def _choose_guess_with_context(
         _ENTROPY_GUESS_CACHE.move_to_end(cache_key)
         return cached_guess
 
-    ranked_guesses = helpers.ranking_with_context(candidates, 1, context)
-    guess_index = (
-        ranked_guesses[-1]
-        if len(candidates) == 1
-        else ranked_guesses[0]
-    )
+    if len(candidates) <= 2:
+        guess_index = context[1][candidates[0]]
+    else:
+        ranked_guesses = helpers.ranking_with_context(candidates, 1, context)
+        guess_index = ranked_guesses[0]
     _ENTROPY_GUESS_CACHE[cache_key] = guess_index
     _ENTROPY_GUESS_CACHE.move_to_end(cache_key)
     while len(_ENTROPY_GUESS_CACHE) > helpers.MEMO_MEMORY_LIMIT:
@@ -799,9 +823,7 @@ def _parallel_root_evaluator(
             helpers._PROFILE.worker_processes,
             worker_count,
         )
-    memo_base = partition_functions.DATASET_PATH.with_name(
-        "entropy_memo_worker.sqlite3"
-    )
+    memo_base = _entropy_cache_path("entropy_memo_worker.sqlite3")
     batch_size = 1
     wave_size = worker_count * batch_size
     with ProcessPoolExecutor(
@@ -1121,6 +1143,7 @@ def _evaluation_json_path(
     strategy: Strategy,
     evaluation_key: str,
     word_key: str,
+    resume: bool = True,
 ) -> Path:
     settings_json = json.dumps(
         _search_settings(),
@@ -1128,10 +1151,57 @@ def _evaluation_json_path(
         separators=(",", ":"),
     )
     settings_key = hashlib.sha256(settings_json.encode("utf-8")).hexdigest()[:12]
-    return partition_functions.DATASET_PATH.with_name(
-        f"entropy_games_{strategy}_{evaluation_key[:12]}_"
-        f"{word_key[:12]}_{settings_key}.json"
+    word_list_path = partition_functions.DATASET_PATH
+    results_dir = (
+        partition_functions.RESULTS_DIR
+        if word_list_path.parent == partition_functions.WORDS_DIR
+        else word_list_path.parent
     )
+    results_dir.mkdir(parents=True, exist_ok=True)
+
+    if resume:
+        legacy_path = results_dir / (
+            f"entropy_games_{strategy}_{evaluation_key[:12]}_"
+            f"{word_key[:12]}_{settings_key}.json"
+        )
+        if legacy_path.exists():
+            return legacy_path
+
+        for path in sorted(
+            (
+                path
+                for path in results_dir.glob(f"entropy_games_{strategy}_*.json")
+                if re.fullmatch(
+                    rf"entropy_games_{strategy}_\d{{8}}_\d{{6}}"
+                    rf"(?:_\d{{6}})?(?:_\d+)?\.json",
+                    path.name,
+                )
+            ),
+            reverse=True,
+        ):
+            try:
+                saved_results = json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError) as error:
+                raise ValueError(
+                    f"Unable to read saved game sequences from {path}."
+                ) from error
+            if (
+                isinstance(saved_results, dict)
+                and saved_results.get("strategy") == strategy
+                and saved_results.get("evaluation_key") == evaluation_key
+                and saved_results.get("word_list_key") == word_key
+                and _search_settings_match(saved_results.get("search_settings"))
+            ):
+                return path
+
+    timestamp = datetime.now().astimezone().strftime("%Y%m%d_%H%M%S")
+    filename = f"entropy_games_{strategy}_{timestamp}.json"
+    path = results_dir / filename
+    suffix = 1
+    while path.exists():
+        path = results_dir / f"entropy_games_{strategy}_{timestamp}_{suffix}.json"
+        suffix += 1
+    return path
 
 
 def _load_evaluation_json(
@@ -1153,7 +1223,7 @@ def _load_evaluation_json(
         or game_results.get("strategy") != strategy
         or game_results.get("evaluation_key") != evaluation_key
         or game_results.get("word_list_key") != word_key
-        or game_results.get("search_settings") != _search_settings()
+        or not _search_settings_match(game_results.get("search_settings"))
         or not isinstance(game_results.get("games"), list)
     ):
         raise ValueError(f"Saved game sequence metadata is invalid in {path}.")
@@ -1251,7 +1321,26 @@ def _save_evaluation_json(
             temporary_path = Path(json_file.name)
             json.dump(game_results, json_file, ensure_ascii=False, indent=2)
             json_file.write("\n")
-        temporary_path.replace(path)
+        try:
+            temporary_path.replace(path)
+        except PermissionError:
+            timestamp = datetime.now().astimezone().strftime("%Y%m%d_%H%M%S")
+            fallback_path = path.with_name(
+                f"entropy_games_{strategy}_{timestamp}.json"
+            )
+            suffix = 1
+            while fallback_path.exists() or fallback_path == path:
+                fallback_path = path.with_name(
+                    f"entropy_games_{strategy}_{timestamp}_{suffix}.json"
+                )
+                suffix += 1
+            temporary_path.replace(fallback_path)
+            print(
+                f"Aviso: não foi possível substituir {path}; "
+                f"checkpoint salvo em {fallback_path}.",
+                flush=True,
+            )
+            path = fallback_path
     finally:
         if temporary_path is not None and temporary_path.exists():
             temporary_path.unlink()
@@ -1289,9 +1378,7 @@ def evaluate_solver(
         )
 
     run_id = uuid.uuid4().hex[:12]
-    runtime_log_path = partition_functions.DATASET_PATH.with_name(
-        "entropy_runtime.log"
-    )
+    runtime_log_path = _entropy_cache_path("entropy_runtime.log")
     run_started = perf_counter()
     _append_runtime_log(
         runtime_log_path,
@@ -1337,6 +1424,7 @@ def evaluate_solver(
         strategy,
         evaluation_key,
         context[3],
+        resume=resume,
     )
     attempts_by_answer = (
         helpers.load_evaluation_results(strategy, evaluation_key)
@@ -1440,7 +1528,7 @@ def evaluate_solver(
             worker_count,
         )
 
-    _save_evaluation_json(
+    json_output_path = _save_evaluation_json(
         json_output_path,
         strategy,
         evaluation_key,
@@ -1489,7 +1577,7 @@ def evaluate_solver(
                 pending_results,
             )
             pending_results.clear()
-            _save_evaluation_json(
+            json_output_path = _save_evaluation_json(
                 json_output_path,
                 strategy,
                 evaluation_key,
@@ -1512,9 +1600,7 @@ def evaluate_solver(
             )
     elif pending_answers:
         _RUNTIME_LOG_LOCK = multiprocessing.get_context("spawn").Lock()
-        worker_memo_base = partition_functions.DATASET_PATH.with_name(
-            "entropy_memo_worker.sqlite3"
-        )
+        worker_memo_base = _entropy_cache_path("entropy_memo_worker.sqlite3")
         batch_size = max(1, checkpoint_interval // worker_count)
         batches = [
             pending_answers[index:index + batch_size]
@@ -1641,7 +1727,7 @@ def evaluate_solver(
                     )
                     completed_count += len(pending_results)
                     pending_results.clear()
-                    _save_evaluation_json(
+                    json_output_path = _save_evaluation_json(
                         json_output_path,
                         strategy,
                         evaluation_key,

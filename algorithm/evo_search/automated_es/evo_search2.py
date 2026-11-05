@@ -98,20 +98,22 @@ def _resolve_path(value: str) -> Path:
 DATASET_DIR = (
     _resolve_path(CONF_VALUES["path_dataset_dir"])
     if CONF_VALUES["path_dataset_dir"]
-    else MODULE_DIR.parents[1] / "dataset"  # original layout: dataset/ two levels up
+    else MODULE_DIR / "dataset"
 )
+WORDS_DIR = DATASET_DIR / "words"
+STATISTICS_DIR = DATASET_DIR / "statistics"
 
 WEIGHTS_PATH =        MODULE_DIR / "pesos.csv"
-LETTERS_PATH =        DATASET_DIR / "letters_position.csv"
+LETTERS_PATH =        STATISTICS_DIR / "letters_position.csv"
 DEFAULT_ACCEPTED_WORDS_PATH = (
     _resolve_path(CONF_VALUES["path_accepted_words"])
     if CONF_VALUES["path_accepted_words"]
-    else DATASET_DIR / "palavras_aceitas500.txt"
+    else WORDS_DIR / "palavras_aceitas500.txt"
 )
 DEFAULT_TERMO_WORDS_PATH = (
     _resolve_path(CONF_VALUES["path_termo_words"])
     if CONF_VALUES["path_termo_words"]
-    else DATASET_DIR / "termo_palavras_aceitas.txt"
+    else WORDS_DIR / "termo_palavras_aceitas.txt"
 )
 TRAIN_LOG_PATH =      MODULE_DIR / "training_log.csv"
 

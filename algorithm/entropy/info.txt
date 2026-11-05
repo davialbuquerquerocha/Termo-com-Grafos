@@ -7,6 +7,9 @@ Este pacote oferece dois modos de escolha de palpite:
 - groups: avalia recursivamente os grupos de feedback para minimizar o custo
   esperado. deep e um alias mantido para compatibilidade.
 
+Quando restam uma ou duas respostas candidatas, entropy escolhe a primeira
+candidata da lista, como groups, em vez de usar o desempate geral por entropia.
+
 Todos os comandos abaixo devem ser executados na raiz do projeto:
 
     cd "C:\Users\arthu\OneDrive\Desktop\Termo\Termo-com-Grafos"
@@ -90,7 +93,9 @@ Opcoes de avaliacao:
 - --max-k N: limita a quantidade maxima de palpites candidatos avaliados em
   cada estado da busca groups. Deve ser maior que zero; sem a opcao, o solver
   mantem a selecao automatica atual. Um limite menor pode acelerar a busca,
-  mas tambem pode excluir o palpite que levaria a melhor solucao.
+  mas tambem pode excluir o palpite que levaria a melhor solucao. Quando
+  --max-k e menor que MIN_K, o limite maximo prevalece; por exemplo, com
+  MIN_K=5 e --max-k 1, o minimo efetivo registrado nos resultados e 1.
 - --profile: mostra tempos e contagens de operacoes da busca.
 - --no-resume: ignora resultados salvos para a selecao atual e recalcula a
   amostra selecionada.
@@ -98,25 +103,26 @@ Opcoes de avaliacao:
 RETOMADA E ARQUIVOS
 -------------------
 
-- dataset\entropy_memo.sqlite3 guarda estados resolvidos da busca groups e os
+- dataset\cache\entropy\entropy_memo.sqlite3 guarda estados resolvidos da busca groups e os
   resultados de avaliacao por resposta. Execucoes seguintes reutilizam esses
   dados quando a lista, a estrategia e a configuracao forem compativeis.
-- dataset\entropy_games_<estrategia>_<amostra>_<configuracao>.json guarda os
+- dataset\results\entropy_games_<estrategia>_<AAAAMMDD_HHMMSS>.json guarda os
   resultados individuais: resposta, numero de tentativas e cada palpite com o
   feedback obtido para aquela resposta. As sequencias sao simuladas
   independentemente por resposta, nao inferidas de jogos parecidos, e
   atualizadas a cada checkpoint. Ao concluir, o JSON inclui tambem as metricas
   agregadas. Uma execucao interrompida deixa o JSON marcado como incompleto;
-  jogos antigos sem sequencia sao simulados novamente ao retomar.
-- dataset\entropy_first_guess_<lista>.json guarda o primeiro palpite calculado
+  jogos antigos sem sequencia sao simulados novamente ao retomar. Avaliacoes
+  compativeis reutilizam o arquivo existente para preservar a retomada.
+- dataset\cache\entropy\entropy_first_guess_<lista>.json guarda o primeiro palpite calculado
   para a busca groups e e separado conforme a lista de respostas selecionada.
-- dataset\entropy_runtime.log recebe eventos JSONL das avaliacoes, incluindo
+- dataset\cache\entropy\entropy_runtime.log recebe eventos JSONL das avaliacoes, incluindo
   inicio, configuracao, etapas, lotes concluidos e checkpoints. O arquivo e
   sempre aberto em modo append; registros existentes nao sao substituidos.
   Durante a avaliacao paralela, uma linha de heartbeat e acrescentada a cada
   30 segundos sem conclusao de lote; os workers tambem registram o inicio e a
   conclusao de cada resposta e imprimem esse progresso no terminal.
-- dataset\feedback_matrix_*.npy guarda a matriz de feedback pre-calculada.
+- dataset\cache\feedback-matrices\feedback_matrix_*.npy guarda a matriz de feedback pre-calculada.
 
 Os arquivos SQLite e seus auxiliares sao ignorados pelo Git. Nao apague o banco
 se quiser retomar uma execucao interrompida. Para recalcular resultados de uma

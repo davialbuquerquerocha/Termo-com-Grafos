@@ -6,6 +6,7 @@ import hashlib
 import io
 import json
 import random
+import re
 import sqlite3
 import tempfile
 from threading import Event, Thread
@@ -132,6 +133,39 @@ class EntropyAlgorithmTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             solver._validate_strategy("unknown")
 
+    def test_entropy_chooses_first_candidate_when_two_remain(self) -> None:
+        words = ["AAAAA", "BBBBB"]
+        context = (
+            words,
+            {word: index for index, word in enumerate(words)},
+            np.zeros((2, 2), dtype=np.uint8),
+            "test",
+        )
+
+        with tempfile.TemporaryDirectory() as directory:
+            word_list_path = Path(directory) / "words.txt"
+            word_list_path.write_text("\n".join(words), encoding="utf-8")
+            with (
+                patch.object(
+                    partition_functions,
+                    "DATASET_PATH",
+                    word_list_path,
+                ),
+                patch.object(
+                    helpers,
+                    "ranking_with_context",
+                    side_effect=AssertionError("two-candidate shortcut should run"),
+                ),
+            ):
+                guess_index = solver._choose_guess_with_context(
+                    words,
+                    "entropy",
+                    0,
+                    context,
+                )
+
+        self.assertEqual(guess_index, 0)
+
     def test_rank_state_applies_k_to_all_guesses_but_keeps_exhaustive_oov(self) -> None:
         words = ["AAAAA", "BBBBB", "CCCCC", "DDDDD", "EEEEE"]
         context = (
@@ -227,6 +261,20 @@ class EntropyAlgorithmTests(unittest.TestCase):
             patch.object(helpers, "_guess_count", return_value=100),
         ):
             self.assertEqual(helpers.k_by_size(5), 2)
+
+    def test_search_settings_report_effective_min_k_and_accept_legacy(self) -> None:
+        with (
+            patch.object(helpers, "MIN_K", 5),
+            patch.object(helpers, "MAX_K", 1),
+        ):
+            settings = solver._search_settings()
+            self.assertEqual(settings["min_k"], 1)
+            self.assertEqual(settings["configured_min_k"], 5)
+            self.assertEqual(settings["max_k"], 1)
+
+            legacy_settings = settings.copy()
+            legacy_settings["min_k"] = legacy_settings.pop("configured_min_k")
+            self.assertTrue(solver._search_settings_match(legacy_settings))
 
     def test_stable_top_k_matches_full_stable_sort(self) -> None:
         rng = np.random.default_rng(2026)
@@ -799,6 +847,12 @@ class EntropyAlgorithmTests(unittest.TestCase):
                         helpers.evaluation_scope_key(words),
                         "test",
                     )
+                    self.assertRegex(
+                        json_path.name,
+                        re.compile(
+                            r"^entropy_games_entropy_\d{8}_\d{6}\.json$"
+                        ),
+                    )
                     json_path.unlink()
                     rebuilt_evaluation = solver.evaluate_solver(
                         answers=words,
@@ -827,6 +881,68 @@ class EntropyAlgorithmTests(unittest.TestCase):
                 self.assertEqual(first_evaluation.distribution, {1: 1, 2: 1, 3: 1})
             finally:
                 helpers.close_memo_store()
+
+    def test_save_evaluation_json_uses_new_checkpoint_when_target_is_locked(self) -> None:
+        words = ["AAAAA"]
+        evaluation_key = helpers.evaluation_scope_key(words)
+        word_key = "test"
+
+        with tempfile.TemporaryDirectory() as directory:
+            results_dir = Path(directory)
+            json_path = results_dir / "entropy_games_entropy_20261104_194333.json"
+            json_path.write_text("existing checkpoint", encoding="utf-8")
+            original_replace = Path.replace
+
+            def replace_unless_locked(source: Path, target: Path) -> Path:
+                if target == json_path:
+                    raise PermissionError("target is locked")
+                return original_replace(source, target)
+
+            with (
+                patch.object(Path, "replace", new=replace_unless_locked),
+                patch.object(
+                    partition_functions,
+                    "DATASET_PATH",
+                    results_dir / "answers.txt",
+                ),
+                redirect_stdout(io.StringIO()),
+            ):
+                saved_path = solver._save_evaluation_json(
+                    json_path,
+                    "entropy",
+                    evaluation_key,
+                    word_key,
+                    words,
+                    {"AAAAA": 1},
+                    {
+                        "AAAAA": [
+                            {"guess": "AAAAA", "feedback": "VVVVV"},
+                        ],
+                    },
+                    complete=False,
+                )
+                resumed_path = solver._evaluation_json_path(
+                    "entropy",
+                    evaluation_key,
+                    word_key,
+                )
+
+            self.assertNotEqual(saved_path, json_path)
+            self.assertTrue(json_path.exists())
+            self.assertEqual(json_path.read_text(encoding="utf-8"), "existing checkpoint")
+            self.assertTrue(saved_path.exists())
+            self.assertEqual(resumed_path, saved_path)
+            self.assertEqual(
+                len(
+                    solver._load_evaluation_json(
+                        saved_path,
+                        "entropy",
+                        evaluation_key,
+                        word_key,
+                    )[0]
+                ),
+                1,
+            )
 
     def test_evaluate_solver_parallel_matches_serial(self) -> None:
         words = ["AAAAA", "BBBBB", "CCCCC"]

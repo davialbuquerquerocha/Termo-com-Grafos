@@ -139,7 +139,7 @@ def render_conf(values: dict) -> str:
         elif key == "sim_words":
             lines += ["", "# Simulation set: 0 = every word of the source list. Start small!"]
         elif key == "path_dataset_dir":
-            lines += ["", "# LOCKED paths (relative to evo_search2.py; empty = auto-detect ../dataset)"]
+            lines += ["", "# LOCKED paths (relative to evo_search2.py; empty = auto-detect ./dataset)"]
         lines.append(f"{key} = {_format_value(key, merged[key])}")
     return "\n".join(lines) + "\n"
 

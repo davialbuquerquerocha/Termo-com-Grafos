@@ -18,7 +18,12 @@ def main():
 	if count < 0:
 		raise SystemExit("N must be a non-negative integer")
 
-	dataset = Path(__file__).resolve().parent.parent / "dataset" / "termo_palavras_aceitas.txt"
+	dataset = (
+		Path(__file__).resolve().parent.parent
+		/ "dataset"
+		/ "words"
+		/ "termo_palavras_aceitas.txt"
+	)
 	words = dataset.read_text(encoding="utf-8").split()
 	if count > len(words):
 		raise SystemExit(f"Requested {count} words, but the dataset contains only {len(words)}")

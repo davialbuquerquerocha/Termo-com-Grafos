@@ -9,8 +9,10 @@ from algorithm.partition import functions as partition_functions
 from algorithm import functions as f
 
 DATASET_DIR = Path(__file__).resolve().parent / "dataset"
-WORD_LIST_PATH = DATASET_DIR / "termo_palavras_aceitas.txt"
-PARTITION_RESULTS_PATH = DATASET_DIR / "resultados_partition_busca_limitada.csv"
+WORD_LIST_PATH = DATASET_DIR / "words" / "termo_palavras_aceitas.txt"
+PARTITION_RESULTS_PATH = (
+    DATASET_DIR / "results" / "resultados_partition_busca_limitada.csv"
+)
 
 WordFunction = Callable[[list[str]], str]
 AlgorithmFunction = Callable[..., int]
@@ -85,6 +87,7 @@ def run_all_answers(
     if max_workers is not None and max_workers <= 0:
         raise ValueError("max_workers deve ser maior que zero.")
 
+    output_path.parent.mkdir(parents=True, exist_ok=True)
     total_answers = len(word_list)
     if not total_answers:
         with output_path.open("w", newline="", encoding="utf-8") as file:

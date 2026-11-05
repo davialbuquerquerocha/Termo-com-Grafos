@@ -1,12 +1,13 @@
 # Termo-com-Grafos
 
-Os algoritmos usam `dataset/termo_palavras_aceitas.txt` tanto como conjunto de
+Os algoritmos usam `dataset/words/termo_palavras_aceitas.txt` tanto como conjunto de
 respostas possíveis quanto como conjunto de palpites. A lista separada de
 soluções não é usada.
 
 O algoritmo de partição escolhe palpites pela qualidade das partições de feedback
-e pré-calcula uma matriz NumPy. O arquivo `.npy` é armazenado em `dataset/` e
-reutilizado enquanto a lista de palavras não mudar.
+e pré-calcula uma matriz NumPy. O arquivo `.npy` é armazenado em
+`dataset/cache/feedback-matrices/` e reutilizado enquanto a lista de palavras
+não mudar.
 Instale a dependência com `pip install -r requirements.txt`.
 
 Execute os testes com `python -m unittest discover -s tests -v`. A simulação de
@@ -15,7 +16,7 @@ Execute os testes com `python -m unittest discover -s tests -v`. A simulação d
 inclusivo. A busca compara o pior número de tentativas do restante da política
 `p=2` e só instala um palpite alternativo se todos os feedbacks do ramo couberem
 no limite de seis tentativas. O resultado é gravado em
-`dataset/resultados_partition_busca_limitada.csv`, mantendo as colunas
+`dataset/results/resultados_partition_busca_limitada.csv`, mantendo as colunas
 `answer, algorithm, word_function, attempts, solved`. As respostas são
 processadas em paralelo usando por padrão todos os processadores lógicos
 disponíveis; o CSV é escrito pelo processo principal e mantém a ordem original.
@@ -40,7 +41,7 @@ Os solvers ficam organizados em pacotes separados:
   `algorithm/entropy/info.txt` para comandos, amostragem, perfilamento e
   arquivos de retomada.
   O comando `evaluate` salva os custos por resposta e o memo da busca em
-  `dataset/entropy_memo.sqlite3`, retomando resultados concluídos na execução
+  `dataset/cache/entropy/entropy_memo.sqlite3`, retomando resultados concluídos na execução
   seguinte. Use `--sample-size 200 --seed 2026` para medir uma amostra
   determinística mantendo todo o vocabulário de palpites; `--profile` mostra
   tempos e contagens internas, `--checkpoint-interval` controla a frequência
@@ -52,8 +53,10 @@ Os solvers ficam organizados em pacotes separados:
   de cada candidato continua serial e as etapas não criam pools aninhados. Os
   caches em memória usam LRU limitado; os estados finalizados da busca são
   gravados no SQLite a cada 1.000 estados.
-  Cada avaliação também salva em `dataset/` um JSON com a resposta, cada
-  palpite e o feedback observado naquele jogo, atualizado a cada checkpoint.
+  Cada avaliação também salva em `dataset/results/` um JSON chamado
+  `entropy_games_<estrategia>_<AAAAMMDD_HHMMSS>.json`, com a
+  resposta, cada palpite e o feedback observado naquele jogo, atualizado a
+  cada checkpoint.
   As sequências são simuladas individualmente para cada resposta, nunca
   copiadas de palavras com caminhos parecidos. Ao final, o JSON inclui as
   métricas agregadas; se interrompida, fica marcado como incompleto. Ao retomar,

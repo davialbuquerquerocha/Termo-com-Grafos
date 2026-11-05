@@ -26,11 +26,11 @@ PARALLEL_WORKERS = 17                  # games evaluated in parallel (physical C
 
 # Directories
 MODULE_DIR =          Path(__file__).resolve().parent
-DATASET_DIR =         MODULE_DIR.parents[1] / "dataset"
+DATASET_DIR =         MODULE_DIR.parents[2] / "dataset"
 
 WEIGHTS_PATH =        MODULE_DIR / "pesos.csv"
-LETTERS_PATH =        DATASET_DIR / "letters_position.csv"
-DEFAULT_ACCEPTED_WORDS_PATH = DATASET_DIR / "palavras_aceitas500.txt"
+LETTERS_PATH =        DATASET_DIR / "statistics" / "letters_position.csv"
+DEFAULT_ACCEPTED_WORDS_PATH = DATASET_DIR / "words" / "palavras_aceitas500.txt"
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(

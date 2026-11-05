@@ -15,7 +15,7 @@ Execute o exemplo a partir da raiz do projeto:
     from algorithm import functions as common
     from algorithm.partition import partition_algorithm
 
-    words = common.file_to_list("dataset/termo_palavras_aceitas.txt")
+    words = common.file_to_list("dataset/words/termo_palavras_aceitas.txt")
     attempts = partition_algorithm(
         words,
         "TERMO",
@@ -31,7 +31,8 @@ MATRIZ DE FEEDBACK
 ------------------
 
 A primeira chamada constroi a matriz NumPy; as chamadas seguintes reutilizam o
-arquivo em dataset/feedback_matrix_*.npy correspondente a lista de palavras.
+arquivo em dataset/cache/feedback-matrices/feedback_matrix_*.npy correspondente
+a lista de palavras.
 A matriz e validada por amostragem contra a funcao de pontuacao do jogo.
 
 AVALIACAO EM LOTE
@@ -45,7 +46,7 @@ Esse comando calcula os palpites alternativos dos ramos ambiguos antes de
 distribuir as respostas por processos. Pode demorar e usa por padrao os
 processadores logicos disponiveis. O resultado e gravado em:
 
-    dataset/resultados_partition_busca_limitada.csv
+    dataset/results/resultados_partition_busca_limitada.csv
 
 O CSV contem answer, algorithm, word_function, attempts e solved. Para mudar
 o numero de processos ou processar uma amostra, chame run_all_answers em
