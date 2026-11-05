@@ -1,6 +1,6 @@
 from contextlib import redirect_stdout
-import csv
 import io
+import json
 import random
 import statistics
 import tempfile
@@ -11,7 +11,9 @@ from unittest.mock import patch
 import numpy as np
 
 from algorithm.inclusive import algorithm as inclusive
+from algorithm.inclusive import evaluation as inclusive_evaluation
 from algorithm.partition import algorithm as partition
+from algorithm.partition import evaluation as partition_evaluation
 from algorithm.partition import functions as partition_functions
 from algorithm import functions as f
 from algorithm import termo_implementation as t
@@ -231,27 +233,120 @@ class AlgorithmTests(unittest.TestCase):
         )
         self.assertEqual(attempts, 1)
 
-    def test_main_preserves_csv_columns(self) -> None:
+    def test_inclusive_evaluation_writes_json_with_guess_history(self) -> None:
         words = ["PATOS", "FATOS", "GATOS"]
         with tempfile.TemporaryDirectory() as directory:
-            output_path = Path(directory) / "results.csv"
-            main.run_all_answers(
+            output_path = Path(directory) / "inclusive.json"
+            processed, simulations = inclusive_evaluation.run_all_answers(
                 words,
                 output_path,
+                heuristic="frequency",
                 max_workers=2,
+            )
+            results = json.loads(output_path.read_text(encoding="utf-8"))
+
+        self.assertEqual((processed, simulations), (3, 3))
+        self.assertEqual(results["algorithm"], "inclusive")
+        self.assertEqual(results["settings"]["heuristic"], "frequency")
+        self.assertTrue(results["complete"])
+        self.assertEqual(results["completed_games"], len(words))
+        self.assertEqual(len(results["games"]), len(words))
+        for game in results["games"]:
+            self.assertTrue(game["solved"])
+            self.assertEqual(game["attempts"], len(game["guesses"]))
+            self.assertEqual(game["guesses"][-1]["guess"], game["answer"])
+            self.assertEqual(game["guesses"][-1]["feedback"], "VVVVV")
+
+    def test_partition_evaluation_writes_json_with_guess_history(self) -> None:
+        words = ["PATOS", "FATOS", "GATOS"]
+        with tempfile.TemporaryDirectory() as directory:
+            output_path = Path(directory) / "results.json"
+            processed, simulations = partition_evaluation.run_all_answers(
+                words,
+                output_path,
+                max_workers=1,
                 batch_size=2,
             )
-            with output_path.open(encoding="utf-8", newline="") as file:
-                reader = csv.reader(file)
-                self.assertEqual(
-                    next(reader),
-                    ["answer", "algorithm", "word_function", "attempts", "solved"],
+            results = json.loads(output_path.read_text(encoding="utf-8"))
+
+        self.assertEqual((processed, simulations), (3, 3))
+        self.assertEqual(results["algorithm"], "partition")
+        self.assertTrue(results["complete"])
+        self.assertEqual(results["completed_games"], len(words))
+        self.assertEqual(len(results["games"]), len(words))
+        for game in results["games"]:
+            self.assertTrue(game["solved"])
+            self.assertEqual(game["attempts"], len(game["guesses"]))
+            self.assertEqual(game["guesses"][-1]["guess"], game["answer"])
+            self.assertEqual(game["guesses"][-1]["feedback"], "VVVVV")
+
+    def test_main_dispatches_entropy_arguments(self) -> None:
+        with patch("algorithm.entropy.algorithm.main") as entropy_main:
+            main.main(
+                ["entropy", "simulate", "TERMO", "--strategy", "groups"]
+            )
+
+        entropy_main.assert_called_once_with(
+            ["simulate", "TERMO", "--strategy", "groups"]
+        )
+
+    def test_main_partition_cli_options(self) -> None:
+        words = ["PATOS", "FATOS", "GATOS"]
+        with tempfile.TemporaryDirectory() as directory:
+            output_path = Path(directory) / "custom.json"
+            with (
+                patch.object(
+                    partition_evaluation.f,
+                    "file_to_list",
+                    return_value=words,
+                ),
+                patch.object(
+                    partition_evaluation,
+                    "run_all_answers",
+                    return_value=(3, 3),
+                ) as run,
+            ):
+                partition_evaluation.main(
+                    [
+                        "--workers",
+                        "2",
+                        "--batch-size",
+                        "3",
+                        "--output",
+                        str(output_path),
+                    ]
                 )
-                rows = list(reader)
-        self.assertEqual(len(rows), len(words))
-        self.assertEqual({row[2] for row in rows}, {"partition_p2_bounded"})
-        self.assertTrue(all(row[1] == "partition" for row in rows))
-        self.assertTrue(all(row[-1] == "True" for row in rows))
+
+        run.assert_called_once_with(
+            words,
+            output_path,
+            max_workers=2,
+            batch_size=3,
+        )
+
+    def test_main_dispatches_partition_arguments(self) -> None:
+        with patch("algorithm.partition.evaluation.main") as partition_main:
+            main.main(
+                ["partition", "evaluate", "--workers", "2"]
+            )
+
+        partition_main.assert_called_once_with(["--workers", "2"])
+
+    def test_main_dispatches_inclusive_arguments(self) -> None:
+        with patch("algorithm.inclusive.evaluation.main") as inclusive_main:
+            main.main(
+                ["inclusive", "--heuristic", "frequency", "--workers", "1"]
+            )
+
+        inclusive_main.assert_called_once_with(
+            ["--heuristic", "frequency", "--workers", "1"]
+        )
+
+    def test_main_defaults_to_partition_launcher(self) -> None:
+        with patch("algorithm.partition.evaluation.main") as partition_main:
+            main.main([])
+
+        partition_main.assert_called_once_with([])
 
     def test_main_reports_expected_solver_errors_as_unsolved(self) -> None:
         for error_type in (RuntimeError, AssertionError, ValueError):
@@ -262,7 +357,7 @@ class AlgorithmTests(unittest.TestCase):
             ) -> int:
                 raise _error("expected failure")
 
-            attempts, solved = main.run_algorithm_and_check(
+            attempts, solved = partition_evaluation.run_algorithm_and_check(
                 self.words,
                 "PATOS",
                 failing_algorithm,

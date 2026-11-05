@@ -16,6 +16,7 @@ def partition_algorithm(
     answer: str,
     word_function: WordFunction,
     show_progress: bool = True,
+    on_guess: Callable[[str, f.Feedback], None] | None = None,
 ) -> int:
     """
     Solve using exact feedback partitions with squared group sizes.
@@ -75,11 +76,15 @@ def partition_algorithm(
         if show_progress:
             print(f"Guess: {guess}")
         if guess == answer:
+            if on_guess is not None:
+                on_guess(guess, t.score_guess(answer, guess))
             if show_progress:
                 print("The algorithm find the anwser!\n")
             return count
 
         feedback = t.evaluate_guess(answer, guess, accepted_words)
+        if on_guess is not None:
+            on_guess(guess, feedback)
         feedback_code = helpers._feedback_code(feedback)
         candidate_indices = np.asarray(possible_indices, dtype=np.intp)
         possible_indices = candidate_indices[

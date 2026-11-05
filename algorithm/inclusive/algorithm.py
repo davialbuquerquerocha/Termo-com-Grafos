@@ -16,12 +16,15 @@ def algorithm_step(
     filter_function: FilterFunction,
     show_progress: bool = True,
     accepted_words: set[str] | None = None,
+    on_guess: Callable[[str, f.Feedback], None] | None = None,
 ) -> list[str]:
     """Run one guess and retain answers consistent with its feedback."""
     guess = word_function(word_list)
     if show_progress:
         print(f"Guess: {guess}")
     if guess.upper() == answer.upper():
+        if on_guess is not None:
+            on_guess(guess, t.score_guess(answer, guess))
         if show_progress:
             print("The algorithm find the anwser!\n")
         return []
@@ -32,6 +35,8 @@ def algorithm_step(
         guess,
         accepted_words if accepted_words is not None else set(word_list),
     )
+    if on_guess is not None:
+        on_guess(guess, feedback)
     word_list = filter_function(word_list, guess, feedback)
     if not word_list:
         raise RuntimeError(
@@ -51,6 +56,7 @@ def inclusive_algorithm(
     answer: str,
     word_function: WordFunction,
     show_progress: bool = True,
+    on_guess: Callable[[str, f.Feedback], None] | None = None,
 ) -> int:
     """Solve with the inclusive strategy and exact observed feedback."""
     answer = answer.strip().upper()
@@ -70,6 +76,7 @@ def inclusive_algorithm(
             f.filter_words_by_feedback,
             show_progress,
             accepted_words,
+            on_guess,
         )
         count += 1
     return count

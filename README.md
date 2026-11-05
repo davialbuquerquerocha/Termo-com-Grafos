@@ -10,18 +10,43 @@ e pré-calcula uma matriz NumPy. O arquivo `.npy` é armazenado em
 não mudar.
 Instale a dependência com `pip install -r requirements.txt`.
 
-Execute os testes com `python -m unittest discover -s tests -v`. A simulação de
-`main.py` calcula apenas o algoritmo de partição com o custo original de potência
-2 e uma busca limitada nos ramos ambíguos; ela não recalcula o algoritmo
-inclusivo. A busca compara o pior número de tentativas do restante da política
-`p=2` e só instala um palpite alternativo se todos os feedbacks do ramo couberem
-no limite de seis tentativas. O resultado é gravado em
-`dataset/results/resultados_partition_busca_limitada.csv`, mantendo as colunas
-`answer, algorithm, word_function, attempts, solved`. As respostas são
-processadas em paralelo usando por padrão todos os processadores lógicos
-disponíveis; o CSV é escrito pelo processo principal e mantém a ordem original.
-Para limitar workers ao chamar a função, use
-`run_all_answers(words, output_path, max_workers=4)`.
+Execute os testes com `python -m unittest discover -s tests -v`. O launcher
+central `main.py` seleciona o algoritmo; os comandos específicos de cada pacote
+continuam disponíveis:
+
+```text
+python main.py partition evaluate --workers 4
+python main.py entropy play --strategy groups
+python main.py entropy simulate TERMO --strategy entropy
+python main.py entropy evaluate --strategy groups --sample-size 200
+python main.py inclusive --heuristic position
+```
+
+`python main.py` continua equivalente a `python main.py partition evaluate`.
+A avaliação de partição usa o custo original de potência 2 e uma busca limitada
+nos ramos ambíguos; ela não recalcula o algoritmo inclusivo. A busca compara o
+pior número de tentativas do restante da política `p=2` e só instala um palpite
+alternativo se todos os feedbacks do ramo couberem no limite de seis tentativas.
+Esse fluxo fica em `algorithm/partition/evaluation.py`; `main.py` apenas
+encaminha os argumentos para o pacote escolhido. O resultado JSON é gravado em
+`dataset/results/resultados_partition_busca_limitada.json`. Ele registra a
+identificação da lista, as configurações, o estado da avaliação, o resumo e,
+para cada resposta, a sequência de palpites e feedbacks. Checkpoints são
+atualizados atomicamente durante a execução, para que uma interrupção deixe o
+último progresso válido. As respostas são processadas em paralelo usando por
+padrão todos os processadores lógicos disponíveis. `--workers`, `--batch-size`
+e `--output` personalizam essa avaliação. Para chamá-la diretamente em Python,
+importe `run_all_answers` de `algorithm.partition.evaluation`.
+
+O modo `inclusive` avalia todas as respostas com a heurística de posição
+(padrão) ou frequência: use `--heuristic frequency` para escolher a segunda.
+Ele usa um worker por padrão; `--workers` e `--output` permitem ajustar a
+execução e o JSON gravado em `dataset/results/resultados_inclusive.json`, que
+inclui a sequência de palpites e feedbacks por resposta e checkpoints seguros.
+
+Os argumentos depois de `entropy` são encaminhados à CLI do pacote sem
+alterações. Também é possível iniciar essa CLI diretamente conforme os exemplos
+em `algorithm/entropy/info.txt`.
 
 Os solvers ficam organizados em pacotes separados:
 

@@ -5,13 +5,25 @@ O solver inclusivo escolhe palpites por uma funcao de palavras fornecida pelo
 usuario. Depois de cada tentativa, calcula o feedback exato e filtra a lista
 de candidatas. A resposta precisa estar nessa lista.
 
-O pacote nao tem uma CLI propria. Execute os exemplos abaixo a partir da raiz
-do projeto:
+O pacote nao tem uma CLI propria. Para avaliar todas as respostas pelo launcher
+central, execute os comandos abaixo a partir da raiz do projeto:
 
     cd "C:\Users\arthu\OneDrive\Desktop\Termo\Termo-com-Grafos"
 
 USO EM PYTHON
 -------------
+
+Avaliar todas as respostas com a heuristica por posicao (padrao) ou por
+frequencia:
+
+    python main.py inclusive
+    python main.py inclusive --heuristic frequency
+
+O JSON com os palpites e feedbacks de cada resposta e salvo em
+dataset/results/resultados_inclusive.json. Checkpoints sao atualizados
+atomicamente durante a avaliacao. O programa usa um worker por padrao; passe
+--workers N para habilitar mais processos ou --output caminho.json para alterar
+o destino.
 
 Escolher a palavra com a maior pontuacao baseada na frequencia das letras em
 cada posicao:
