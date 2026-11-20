@@ -20,7 +20,7 @@ from typing import Any, Literal, NamedTuple
 
 import numpy as np
 
-from algorithm.partition import functions as partition_functions
+from algorithm.mim_square import functions as mim_square_functions
 from . import functions as helpers
 
 Strategy = Literal["entropy", "groups", "deep"]
@@ -33,7 +33,7 @@ _ENTROPY_GUESS_CACHE: OrderedDict[
 _SearchContext = tuple[
     list[str],
     dict[str, int],
-    partition_functions.FeedbackMatrix,
+    mim_square_functions.FeedbackMatrix,
     str,
 ]
 _WORKER_ANSWERS: list[str] = []
@@ -138,10 +138,10 @@ def _search_settings_match(saved_settings: object) -> bool:
 
 
 def _entropy_cache_path(filename: str) -> Path:
-    word_list_path = partition_functions.DATASET_PATH
+    word_list_path = mim_square_functions.DATASET_PATH
     cache_dir = (
-        partition_functions.ENTROPY_CACHE_DIR
-        if word_list_path.parent == partition_functions.WORDS_DIR
+        mim_square_functions.ENTROPY_CACHE_DIR
+        if word_list_path.parent == mim_square_functions.WORDS_DIR
         else word_list_path.parent
     )
     cache_dir.mkdir(parents=True, exist_ok=True)
@@ -156,9 +156,9 @@ def _normalize_candidates(candidates: list[str]) -> list[str]:
 
 def _answer_list_path(answer_list: AnswerList) -> Path:
     if answer_list == "accepted":
-        return partition_functions.DATASET_PATH
+        return mim_square_functions.DATASET_PATH
     if answer_list == "solutions":
-        return partition_functions.DATASET_PATH.with_name(
+        return mim_square_functions.DATASET_PATH.with_name(
             "termo_solucoes_possiveis.txt"
         )
     raise ValueError("answer_list must be 'accepted' or 'solutions'.")
@@ -173,7 +173,7 @@ def _load_answers(answer_list: AnswerList = "accepted") -> list[str]:
 
 
 def _load_guess_words(candidates: list[str]) -> list[str]:
-    with partition_functions.DATASET_PATH.open(encoding="utf-8") as word_file:
+    with mim_square_functions.DATASET_PATH.open(encoding="utf-8") as word_file:
         guesses = _normalize_candidates(word_file.readlines())
     for candidate in candidates:
         normalized_candidate = candidate.strip().upper()
@@ -187,7 +187,7 @@ def _search_context(
     memo_path: Path | None = None,
 ) -> _SearchContext:
     guesses = _load_guess_words(candidates)
-    matrix, word_indices, word_key = partition_functions._get_feedback_matrix(
+    matrix, word_indices, word_key = mim_square_functions._get_feedback_matrix(
         guesses
     )
     helpers.configure_memo_store(
@@ -264,7 +264,7 @@ def choose_first_guess(
     )
     guess_words = _load_guess_words(candidates)
     guess_list_hash = hashlib.sha256(
-        partition_functions.DATASET_PATH.read_bytes()
+        mim_square_functions.DATASET_PATH.read_bytes()
     ).hexdigest()
     if not candidates:
         raise ValueError("The answer list must not be empty.")
@@ -377,7 +377,7 @@ def _choose_guess_with_context(
             )
         return guess_index
 
-    word_list_path = partition_functions.DATASET_PATH
+    word_list_path = mim_square_functions.DATASET_PATH
     word_list_stat = word_list_path.stat()
     cache_key = (
         str(word_list_path),
@@ -438,7 +438,7 @@ def interactive_play(
     candidates = _load_answers(answer_list)
     context = _search_context(candidates)
     guesses, word_indices, matrix, _ = context
-    winning_feedback = partition_functions._FEEDBACK_PATTERN_COUNT - 1
+    winning_feedback = mim_square_functions._FEEDBACK_PATTERN_COUNT - 1
     initial_deep_guess = (
         choose_first_guess(answer_list=answer_list)
         if strategy == "deep"
@@ -558,7 +558,7 @@ def _simulate_game_with_context(
 ) -> int:
     guesses, word_indices, matrix, _ = context
     candidates = all_answers.copy()
-    winning_feedback = partition_functions._FEEDBACK_PATTERN_COUNT - 1
+    winning_feedback = mim_square_functions._FEEDBACK_PATTERN_COUNT - 1
     answer_index = word_indices[answer]
     guess_index = (
         initial_guess_index
@@ -655,7 +655,7 @@ def _initialize_evaluation_worker(
     global _RUNTIME_LOG_LOCK
     _RUNTIME_LOG_LOCK = runtime_log_lock
     helpers.MAX_K = max_k
-    partition_functions.DATASET_PATH = dataset_path
+    mim_square_functions.DATASET_PATH = dataset_path
     process_name = multiprocessing.current_process().name
     worker_match = re.search(r"-(\d+)$", process_name)
     if worker_match is None:
@@ -833,7 +833,7 @@ def _parallel_root_evaluator(
         initargs=(
             context[0],
             "deep",
-            partition_functions.DATASET_PATH,
+            mim_square_functions.DATASET_PATH,
             memo_base,
             worker_count,
             None,
@@ -963,7 +963,7 @@ def _partition_feedback_groups(
     for candidate, feedback_code in zip(candidates, feedback_codes):
         groups.setdefault(int(feedback_code), []).append(candidate)
 
-    winning_feedback = partition_functions._FEEDBACK_PATTERN_COUNT - 1
+    winning_feedback = mim_square_functions._FEEDBACK_PATTERN_COUNT - 1
     return sorted(
         (
             (feedback_code, group)
@@ -1151,10 +1151,10 @@ def _evaluation_json_path(
         separators=(",", ":"),
     )
     settings_key = hashlib.sha256(settings_json.encode("utf-8")).hexdigest()[:12]
-    word_list_path = partition_functions.DATASET_PATH
+    word_list_path = mim_square_functions.DATASET_PATH
     results_dir = (
-        partition_functions.RESULTS_DIR
-        if word_list_path.parent == partition_functions.WORDS_DIR
+        mim_square_functions.RESULTS_DIR
+        if word_list_path.parent == mim_square_functions.WORDS_DIR
         else word_list_path.parent
     )
     results_dir.mkdir(parents=True, exist_ok=True)
@@ -1623,7 +1623,7 @@ def evaluate_solver(
             initargs=(
                 all_answers,
                 strategy,
-                partition_functions.DATASET_PATH,
+                mim_square_functions.DATASET_PATH,
                 worker_memo_base,
                 worker_count,
                 initial_guess_index,

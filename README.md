@@ -15,33 +15,33 @@ central `main.py` seleciona o algoritmo; os comandos específicos de cada pacote
 continuam disponíveis:
 
 ```text
-python main.py partition evaluate --workers 4
+python main.py mim_square evaluate --workers 4
 python main.py entropy play --strategy groups
 python main.py entropy simulate TERMO --strategy entropy
 python main.py entropy evaluate --strategy groups --sample-size 200
-python main.py inclusive --heuristic position
+python main.py exclusive --heuristic position
 ```
 
-`python main.py` continua equivalente a `python main.py partition evaluate`.
+`python main.py` continua equivalente a `python main.py mim_square evaluate`.
 A avaliação de partição usa o custo original de potência 2 e uma busca limitada
 nos ramos ambíguos; ela não recalcula o algoritmo inclusivo. A busca compara o
 pior número de tentativas do restante da política `p=2` e só instala um palpite
 alternativo se todos os feedbacks do ramo couberem no limite de seis tentativas.
-Esse fluxo fica em `algorithm/partition/evaluation.py`; `main.py` apenas
+Esse fluxo fica em `algorithm/mim_square/evaluation.py`; `main.py` apenas
 encaminha os argumentos para o pacote escolhido. O resultado JSON é gravado em
-`dataset/results/resultados_partition_busca_limitada.json`. Ele registra a
+`dataset/results/resultados_mim_square_busca_limitada.json`. Ele registra a
 identificação da lista, as configurações, o estado da avaliação, o resumo e,
 para cada resposta, a sequência de palpites e feedbacks. Checkpoints são
 atualizados atomicamente durante a execução, para que uma interrupção deixe o
 último progresso válido. As respostas são processadas em paralelo usando por
 padrão todos os processadores lógicos disponíveis. `--workers`, `--batch-size`
 e `--output` personalizam essa avaliação. Para chamá-la diretamente em Python,
-importe `run_all_answers` de `algorithm.partition.evaluation`.
+importe `run_all_answers` de `algorithm.mim_square.evaluation`.
 
-O modo `inclusive` avalia todas as respostas com a heurística de posição
+O modo `exclusive` avalia todas as respostas com a heurística de posição
 (padrão) ou frequência: use `--heuristic frequency` para escolher a segunda.
 Ele usa um worker por padrão; `--workers` e `--output` permitem ajustar a
-execução e o JSON gravado em `dataset/results/resultados_inclusive.json`, que
+execução e o JSON gravado em `dataset/results/resultados_exclusive.json`, que
 inclui a sequência de palpites e feedbacks por resposta e checkpoints seguros.
 
 Os argumentos depois de `entropy` são encaminhados à CLI do pacote sem
@@ -50,12 +50,12 @@ em `algorithm/entropy/info.txt`.
 
 Os solvers ficam organizados em pacotes separados:
 
-- `algorithm/inclusive/algorithm.py` contém o solver inclusivo e
-  `algorithm/inclusive/functions.py` contém seus filtros e heurísticas.
-  Consulte `algorithm/inclusive/info.txt` para exemplos de uso.
-- `algorithm/partition/algorithm.py` contém o solver por partições e
-  `algorithm/partition/functions.py` contém os auxiliares de matriz/partição e
-  os filtros exclusivos legados. Consulte `algorithm/partition/info.txt` para
+- `algorithm/exclusive/algorithm.py` contém o solver exclusivo e
+  `algorithm/exclusive/functions.py` contém seus filtros e heurísticas.
+  Consulte `algorithm/exclusive/info.txt` para exemplos de uso.
+- `algorithm/mim_square/algorithm.py` contém o solver mim_square e
+  `algorithm/mim_square/functions.py` contém os auxiliares de matriz/partição e
+  os filtros exclusivos legados. Consulte `algorithm/mim_square/info.txt` para
   os exemplos de execução e a avaliação em lote.
 - `algorithm/entropy/` expõe o solver por entropia. Use `strategy="entropy"`
   para escolher apenas pela entropia dos palpites ou `strategy="groups"` para

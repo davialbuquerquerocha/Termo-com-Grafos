@@ -1,4 +1,4 @@
-"""Batch evaluation of all answers with the inclusive solver."""
+"""Batch evaluation of all answers with the exclusive solver."""
 
 import argparse
 from collections.abc import Callable, Sequence
@@ -6,13 +6,13 @@ from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 
 from algorithm import functions as f
-from algorithm.inclusive import algorithm as inclusive
-from algorithm.inclusive import functions as heuristics
+from algorithm.exclusive import algorithm as exclusive
+from algorithm.exclusive import functions as heuristics
 
 PROJECT_DIR = Path(__file__).resolve().parents[2]
 DATASET_DIR = PROJECT_DIR / "dataset"
 WORD_LIST_PATH = DATASET_DIR / "words" / "termo_palavras_aceitas.txt"
-RESULTS_PATH = DATASET_DIR / "results" / "resultados_inclusive.json"
+RESULTS_PATH = DATASET_DIR / "results" / "resultados_exclusive.json"
 
 WordFunction = Callable[[list[str]], str]
 _WORKER_WORD_LIST: list[str] = []
@@ -35,7 +35,7 @@ def _initialize_worker(word_list: list[str], heuristic: str) -> None:
 
 def _process_answer(answer: str) -> dict[str, object]:
     if _WORKER_WORD_FUNCTION is None:
-        raise RuntimeError("A heurística do worker inclusivo não foi inicializada.")
+        raise RuntimeError("A heurística do worker exclusivo não foi inicializada.")
     guesses: list[dict[str, str]] = []
 
     def record_guess(guess: str, feedback: f.Feedback) -> None:
@@ -44,7 +44,7 @@ def _process_answer(answer: str) -> dict[str, object]:
         )
 
     try:
-        attempts = inclusive.inclusive_algorithm(
+        attempts = exclusive.exclusive_algorithm(
             _WORKER_WORD_LIST.copy(),
             answer,
             _WORKER_WORD_FUNCTION,
@@ -78,7 +78,7 @@ def run_all_answers(
     games: list[dict[str, object]] = []
     payload: dict[str, object] = {
         "format_version": 1,
-        "algorithm": "inclusive",
+        "algorithm": "exclusive",
         "word_list_key": f.word_list_key(word_list),
         "settings": {"heuristic": heuristic},
         "complete": False,
@@ -126,7 +126,7 @@ def run_all_answers(
 
 def main(argv: Sequence[str] | None = None) -> None:
     parser = argparse.ArgumentParser(
-        description="Avaliar todas as respostas com o algoritmo inclusivo."
+        description="Avaliar todas as respostas com o algoritmo exclusivo."
     )
     parser.add_argument(
         "--heuristic",

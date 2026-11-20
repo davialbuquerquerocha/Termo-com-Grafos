@@ -10,11 +10,11 @@ from unittest.mock import patch
 
 import numpy as np
 
-from algorithm.inclusive import algorithm as inclusive
-from algorithm.inclusive import evaluation as inclusive_evaluation
-from algorithm.partition import algorithm as partition
-from algorithm.partition import evaluation as partition_evaluation
-from algorithm.partition import functions as partition_functions
+from algorithm.exclusive import algorithm as exclusive
+from algorithm.exclusive import evaluation as exclusive_evaluation
+from algorithm.mim_square import algorithm as mim_square
+from algorithm.mim_square import evaluation as mim_square_evaluation
+from algorithm.mim_square import functions as mim_square_functions
 from algorithm import functions as f
 from algorithm import termo_implementation as t
 import main
@@ -23,7 +23,7 @@ import main
 class AlgorithmTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        cls.words = f.file_to_list(str(partition_functions.DATASET_PATH))
+        cls.words = f.file_to_list(str(mim_square_functions.DATASET_PATH))
 
     def test_feedback_filter_matches_scoring_definition(self) -> None:
         rng = random.Random(11)
@@ -63,11 +63,11 @@ class AlgorithmTests(unittest.TestCase):
             key: str | None = None
             try:
                 with patch.object(
-                    partition_functions,
+                    mim_square_functions,
                     "DATASET_PATH",
                     word_list_path,
                 ):
-                    matrix, index, key = partition_functions._get_feedback_matrix(
+                    matrix, index, key = mim_square_functions._get_feedback_matrix(
                         words
                     )
 
@@ -81,7 +81,7 @@ class AlgorithmTests(unittest.TestCase):
                     )
                     for guess in words:
                         for answer in words:
-                            expected = partition_functions._feedback_code(
+                            expected = mim_square_functions._feedback_code(
                                 t.score_guess(answer, guess)
                             )
                             self.assertEqual(
@@ -90,36 +90,36 @@ class AlgorithmTests(unittest.TestCase):
                             )
             finally:
                 if key is not None:
-                    matrix = partition_functions._FEEDBACK_MATRIX_CACHE.pop(
+                    matrix = mim_square_functions._FEEDBACK_MATRIX_CACHE.pop(
                         key,
                         None,
                     )
                     if matrix is not None and getattr(matrix, "_mmap", None) is not None:
                         matrix._mmap.close()
-                    partition_functions._WORD_INDEX_CACHE.pop(key, None)
-                    partition_functions._MATRIX_VALIDATED.discard(key)
+                    mim_square_functions._WORD_INDEX_CACHE.pop(key, None)
+                    mim_square_functions._MATRIX_VALIDATED.discard(key)
 
     def test_feedback_matrix_matches_score_guess_on_3000_pairs(self) -> None:
-        matrix, index, key = partition_functions._get_feedback_matrix(self.words)
-        self.assertIn(key, partition_functions._MATRIX_VALIDATED)
+        matrix, index, key = mim_square_functions._get_feedback_matrix(self.words)
+        self.assertIn(key, mim_square_functions._MATRIX_VALIDATED)
         rng = random.Random(0)
         for _ in range(3000):
             guess = rng.choice(self.words)
             answer = rng.choice(self.words)
-            expected = partition_functions._feedback_code(
+            expected = mim_square_functions._feedback_code(
                 t.score_guess(answer, guess)
             )
             self.assertEqual(int(matrix[index[guess], index[answer]]), expected)
 
     def test_matrix_filter_matches_general_feedback_filter_for_500_pairs(self) -> None:
-        matrix, index, _key = partition_functions._get_feedback_matrix(self.words)
+        matrix, index, _key = mim_square_functions._get_feedback_matrix(self.words)
         rng = random.Random(11)
         all_indices = list(range(len(self.words)))
         for _ in range(500):
             guess = rng.choice(self.words)
             answer = rng.choice(self.words)
             feedback = t.score_guess(answer, guess)
-            feedback_code = partition_functions._feedback_code(feedback)
+            feedback_code = mim_square_functions._feedback_code(feedback)
             matching_indices = [
                 candidate_index
                 for candidate_index in all_indices
@@ -138,11 +138,11 @@ class AlgorithmTests(unittest.TestCase):
             )
             self.assertEqual(matrix_candidates, filtered_candidates)
 
-    def test_partition_solver_uses_unique_guesses_and_preserves_answer(self) -> None:
+    def test_mim_square_solver_uses_unique_guesses_and_preserves_answer(self) -> None:
         words = ["PATOS", "FATOS", "GATOS", "JATOS", "NATOS", "RATOS", "MATOS"]
         output = io.StringIO()
         with redirect_stdout(output):
-            attempts = partition.partition_algorithm(
+            attempts = mim_square.mim_square_algorithm(
                 words,
                 "PATOS",
                 lambda _candidates: self.fail("word_function must be ignored"),
@@ -157,10 +157,10 @@ class AlgorithmTests(unittest.TestCase):
         self.assertLessEqual(attempts, 5)
         self.assertEqual(len(guessed), len(set(guessed)))
 
-    def test_partition_solver_uses_prepared_bounded_override(self) -> None:
+    def test_mim_square_solver_uses_prepared_bounded_override(self) -> None:
         words = ["PATOS", "FATOS", "GATOS", "JATOS", "NATOS", "RATOS", "MATOS"]
-        matrix, index, word_key = partition_functions._get_feedback_matrix(words)
-        first_guess_index = partition_functions._choose_partition_guess(
+        matrix, index, word_key = mim_square_functions._get_feedback_matrix(words)
+        first_guess_index = mim_square_functions._choose_mim_square_guess(
             list(range(len(words))),
             set(),
             matrix,
@@ -168,7 +168,7 @@ class AlgorithmTests(unittest.TestCase):
         )
         answer = next(word for word in words if index[word] != first_guess_index)
         first_guess = words[first_guess_index]
-        feedback_code = partition_functions._feedback_code(
+        feedback_code = mim_square_functions._feedback_code(
             t.score_guess(answer, first_guess)
         )
         possible_indices = np.flatnonzero(
@@ -181,15 +181,15 @@ class AlgorithmTests(unittest.TestCase):
         )
         override_key = (
             word_key,
-            partition_functions._candidate_state_key(possible_indices),
+            mim_square_functions._candidate_state_key(possible_indices),
         )
         output = io.StringIO()
 
         with patch.dict(
-            partition_functions._BOUNDED_GUESS_OVERRIDES,
+            mim_square_functions._BOUNDED_GUESS_OVERRIDES,
             {override_key: override_index},
         ), redirect_stdout(output):
-            partition.partition_algorithm(
+            mim_square.mim_square_algorithm(
                 words,
                 answer,
                 lambda _candidates: self.fail("word_function must be ignored"),
@@ -203,11 +203,11 @@ class AlgorithmTests(unittest.TestCase):
         ]
         self.assertEqual(guesses[1], words[override_index])
 
-    def test_partition_solver_quality_on_seeded_sample(self) -> None:
+    def test_mim_square_solver_quality_on_seeded_sample(self) -> None:
         rng = random.Random(11)
         answers = rng.sample(self.words, 1500)
         attempts = [
-            partition.partition_algorithm(
+            mim_square.mim_square_algorithm(
                 self.words,
                 answer,
                 lambda _candidates: self.fail("word_function must be ignored"),
@@ -218,14 +218,14 @@ class AlgorithmTests(unittest.TestCase):
         self.assertLessEqual(statistics.mean(attempts), 4.2)
         self.assertLessEqual(sum(value > 6 for value in attempts), 15)
         self.assertLessEqual(max(attempts), 8)
-        first_guess_index = partition_functions._FIRST_GUESS_CACHE[
-            partition_functions._words_key(self.words)
+        first_guess_index = mim_square_functions._FIRST_GUESS_CACHE[
+            mim_square_functions._words_key(self.words)
         ]
         self.assertEqual(self.words[first_guess_index], "SORIA")
 
-    def test_inclusive_solver_is_in_its_own_module(self) -> None:
+    def test_exclusive_solver_is_in_its_own_module(self) -> None:
         words = ["PATOS", "FATOS", "GATOS"]
-        attempts = inclusive.inclusive_algorithm(
+        attempts = exclusive.exclusive_algorithm(
             words,
             "PATOS",
             lambda _candidates: "PATOS",
@@ -233,11 +233,11 @@ class AlgorithmTests(unittest.TestCase):
         )
         self.assertEqual(attempts, 1)
 
-    def test_inclusive_evaluation_writes_json_with_guess_history(self) -> None:
+    def test_exclusive_evaluation_writes_json_with_guess_history(self) -> None:
         words = ["PATOS", "FATOS", "GATOS"]
         with tempfile.TemporaryDirectory() as directory:
-            output_path = Path(directory) / "inclusive.json"
-            processed, simulations = inclusive_evaluation.run_all_answers(
+            output_path = Path(directory) / "exclusive.json"
+            processed, simulations = exclusive_evaluation.run_all_answers(
                 words,
                 output_path,
                 heuristic="frequency",
@@ -246,7 +246,7 @@ class AlgorithmTests(unittest.TestCase):
             results = json.loads(output_path.read_text(encoding="utf-8"))
 
         self.assertEqual((processed, simulations), (3, 3))
-        self.assertEqual(results["algorithm"], "inclusive")
+        self.assertEqual(results["algorithm"], "exclusive")
         self.assertEqual(results["settings"]["heuristic"], "frequency")
         self.assertTrue(results["complete"])
         self.assertEqual(results["completed_games"], len(words))
@@ -257,11 +257,11 @@ class AlgorithmTests(unittest.TestCase):
             self.assertEqual(game["guesses"][-1]["guess"], game["answer"])
             self.assertEqual(game["guesses"][-1]["feedback"], "VVVVV")
 
-    def test_partition_evaluation_writes_json_with_guess_history(self) -> None:
+    def test_mim_square_evaluation_writes_json_with_guess_history(self) -> None:
         words = ["PATOS", "FATOS", "GATOS"]
         with tempfile.TemporaryDirectory() as directory:
             output_path = Path(directory) / "results.json"
-            processed, simulations = partition_evaluation.run_all_answers(
+            processed, simulations = mim_square_evaluation.run_all_answers(
                 words,
                 output_path,
                 max_workers=1,
@@ -270,7 +270,7 @@ class AlgorithmTests(unittest.TestCase):
             results = json.loads(output_path.read_text(encoding="utf-8"))
 
         self.assertEqual((processed, simulations), (3, 3))
-        self.assertEqual(results["algorithm"], "partition")
+        self.assertEqual(results["algorithm"], "mim_square")
         self.assertTrue(results["complete"])
         self.assertEqual(results["completed_games"], len(words))
         self.assertEqual(len(results["games"]), len(words))
@@ -290,23 +290,23 @@ class AlgorithmTests(unittest.TestCase):
             ["simulate", "TERMO", "--strategy", "groups"]
         )
 
-    def test_main_partition_cli_options(self) -> None:
+    def test_main_mim_square_cli_options(self) -> None:
         words = ["PATOS", "FATOS", "GATOS"]
         with tempfile.TemporaryDirectory() as directory:
             output_path = Path(directory) / "custom.json"
             with (
                 patch.object(
-                    partition_evaluation.f,
+                    mim_square_evaluation.f,
                     "file_to_list",
                     return_value=words,
                 ),
                 patch.object(
-                    partition_evaluation,
+                    mim_square_evaluation,
                     "run_all_answers",
                     return_value=(3, 3),
                 ) as run,
             ):
-                partition_evaluation.main(
+                mim_square_evaluation.main(
                     [
                         "--workers",
                         "2",
@@ -324,29 +324,29 @@ class AlgorithmTests(unittest.TestCase):
             batch_size=3,
         )
 
-    def test_main_dispatches_partition_arguments(self) -> None:
-        with patch("algorithm.partition.evaluation.main") as partition_main:
+    def test_main_dispatches_mim_square_arguments(self) -> None:
+        with patch("algorithm.mim_square.evaluation.main") as mim_square_main:
             main.main(
-                ["partition", "evaluate", "--workers", "2"]
+                ["mim_square", "evaluate", "--workers", "2"]
             )
 
-        partition_main.assert_called_once_with(["--workers", "2"])
+        mim_square_main.assert_called_once_with(["--workers", "2"])
 
-    def test_main_dispatches_inclusive_arguments(self) -> None:
-        with patch("algorithm.inclusive.evaluation.main") as inclusive_main:
+    def test_main_dispatches_exclusive_arguments(self) -> None:
+        with patch("algorithm.exclusive.evaluation.main") as exclusive_main:
             main.main(
-                ["inclusive", "--heuristic", "frequency", "--workers", "1"]
+                ["exclusive", "--heuristic", "frequency", "--workers", "1"]
             )
 
-        inclusive_main.assert_called_once_with(
+        exclusive_main.assert_called_once_with(
             ["--heuristic", "frequency", "--workers", "1"]
         )
 
-    def test_main_defaults_to_partition_launcher(self) -> None:
-        with patch("algorithm.partition.evaluation.main") as partition_main:
+    def test_main_defaults_to_mim_square_launcher(self) -> None:
+        with patch("algorithm.mim_square.evaluation.main") as mim_square_main:
             main.main([])
 
-        partition_main.assert_called_once_with([])
+        mim_square_main.assert_called_once_with([])
 
     def test_main_reports_expected_solver_errors_as_unsolved(self) -> None:
         for error_type in (RuntimeError, AssertionError, ValueError):
@@ -357,7 +357,7 @@ class AlgorithmTests(unittest.TestCase):
             ) -> int:
                 raise _error("expected failure")
 
-            attempts, solved = partition_evaluation.run_algorithm_and_check(
+            attempts, solved = mim_square_evaluation.run_algorithm_and_check(
                 self.words,
                 "PATOS",
                 failing_algorithm,

@@ -1,4 +1,4 @@
-"""Helpers for feedback matrices and partition-based word selection."""
+"""Helpers for feedback matrices and mim_square-based word selection."""
 
 import hashlib
 from pathlib import Path
@@ -24,7 +24,7 @@ FeedbackMatrix = np.ndarray
 
 _FEEDBACK_MATRIX_CACHE: dict[str, FeedbackMatrix] = {}
 _WORD_INDEX_CACHE: dict[str, dict[str, int]] = {}
-_PARTITION_GUESS_CACHE: dict[tuple[str, bytes, tuple[int, ...]], int] = {}
+_MIM_SQUARE_GUESS_CACHE: dict[tuple[str, bytes, tuple[int, ...]], int] = {}
 _FIRST_GUESS_CACHE: dict[str, int] = {}
 _BOUNDED_GUESS_OVERRIDES: dict[tuple[str, bytes], int] = {}
 _MATRIX_VALIDATED: set[str] = set()
@@ -155,7 +155,7 @@ def prepare_bounded_guess_overrides(
     possible_indices = list(range(len(normalized_words)))
     first_guess_index = _FIRST_GUESS_CACHE.get(word_key, -1)
     if first_guess_index < 0:
-        first_guess_index = _choose_partition_guess(
+        first_guess_index = _choose_mim_square_guess(
             possible_indices,
             set(),
             matrix,
@@ -180,7 +180,7 @@ def prepare_bounded_guess_overrides(
         cached_depth = depth_cache.get(cache_key)
         if cached_depth is not None:
             return cached_depth
-        guess_index = _choose_partition_guess(
+        guess_index = _choose_mim_square_guess(
             list(state),
             set(used_guesses),
             matrix,
@@ -356,7 +356,7 @@ def _get_feedback_matrix(word_list: list[str]) -> tuple[FeedbackMatrix, dict[str
     return matrix, index, key
 
 
-def _choose_partition_guess(
+def _choose_mim_square_guess(
     possible_indices: list[int],
     guessed_indices: set[int],
     matrix: FeedbackMatrix,
@@ -366,7 +366,7 @@ def _choose_partition_guess(
         np.asarray(possible_indices, dtype=np.uint32).tobytes()
     ).digest()
     cache_key = word_key, state_digest, tuple(sorted(guessed_indices))
-    cached_index = _PARTITION_GUESS_CACHE.get(cache_key)
+    cached_index = _MIM_SQUARE_GUESS_CACHE.get(cache_key)
     if cached_index is not None:
         return cached_index
 
@@ -417,5 +417,5 @@ def _choose_partition_guess(
         (index for index in best_indices if index in possible_set),
         best_indices[0],
     )
-    _PARTITION_GUESS_CACHE[cache_key] = selected_index
+    _MIM_SQUARE_GUESS_CACHE[cache_key] = selected_index
     return selected_index

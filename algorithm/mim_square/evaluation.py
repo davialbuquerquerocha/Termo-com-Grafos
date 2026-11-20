@@ -1,4 +1,4 @@
-"""Batch evaluation of all answers with the partition-based solver."""
+"""Batch evaluation of all answers with the mim_square solver."""
 
 import argparse
 from collections.abc import Callable, Sequence
@@ -7,14 +7,14 @@ import os
 from pathlib import Path
 
 from algorithm import functions as f
-from algorithm.partition import algorithm as partition
-from algorithm.partition import functions as partition_functions
+from algorithm.mim_square import algorithm as mim_square
+from algorithm.mim_square import functions as mim_square_functions
 
 PROJECT_DIR = Path(__file__).resolve().parents[2]
 DATASET_DIR = PROJECT_DIR / "dataset"
 WORD_LIST_PATH = DATASET_DIR / "words" / "termo_palavras_aceitas.txt"
-PARTITION_RESULTS_PATH = (
-    DATASET_DIR / "results" / "resultados_partition_busca_limitada.json"
+MIM_SQUARE_RESULTS_PATH = (
+    DATASET_DIR / "results" / "resultados_mim_square_busca_limitada.json"
 )
 
 WordFunction = Callable[[list[str]], str]
@@ -29,8 +29,8 @@ def _initialize_worker(
 ) -> None:
     global _WORKER_WORD_LIST
     _WORKER_WORD_LIST = word_list
-    partition_functions._get_feedback_matrix(word_list)
-    partition_functions.install_bounded_guess_overrides(bounded_overrides)
+    mim_square_functions._get_feedback_matrix(word_list)
+    mim_square_functions.install_bounded_guess_overrides(bounded_overrides)
 
 
 def run_algorithm_and_check(
@@ -68,7 +68,7 @@ def _process_answer_batch(answers: list[str]) -> list[dict[str, object]]:
         attempts, solved = run_algorithm_and_check(
             _WORKER_WORD_LIST,
             answer,
-            partition.partition_algorithm,
+            mim_square.mim_square_algorithm,
             _unused_word_function,
             guesses,
         )
@@ -102,7 +102,7 @@ def run_all_answers(
     games: list[dict[str, object]] = []
     payload: dict[str, object] = {
         "format_version": 1,
-        "algorithm": "partition",
+        "algorithm": "mim_square",
         "word_list_key": f.word_list_key(word_list),
         "settings": {"cost_power": 2, "max_attempts": 6},
         "complete": False,
@@ -117,7 +117,7 @@ def run_all_answers(
         f.write_json_checkpoint(output_path, payload)
         return 0, 0
 
-    bounded_overrides, override_report = partition_functions.prepare_bounded_guess_overrides(
+    bounded_overrides, override_report = mim_square_functions.prepare_bounded_guess_overrides(
         word_list,
         max_attempts=6,
     )
@@ -159,7 +159,7 @@ def run_all_answers(
 
 def main(argv: Sequence[str] | None = None) -> None:
     parser = argparse.ArgumentParser(
-        description="Avaliar todas as respostas com o algoritmo de partição."
+        description="Avaliar todas as respostas com o algoritmo mim_square."
     )
     parser.add_argument(
         "--workers",
@@ -175,7 +175,7 @@ def main(argv: Sequence[str] | None = None) -> None:
     parser.add_argument(
         "--output",
         type=Path,
-        default=PARTITION_RESULTS_PATH,
+        default=MIM_SQUARE_RESULTS_PATH,
         help="caminho do JSON de resultados",
     )
     args = parser.parse_args(argv)

@@ -20,7 +20,7 @@ import numpy as np
 import algorithm.entropy as entropy_package
 from algorithm.entropy import algorithm as solver
 from algorithm.entropy import functions as helpers
-from algorithm.partition import functions as partition_functions
+from algorithm.mim_square import functions as mim_square_functions
 
 
 class EntropyAlgorithmTests(unittest.TestCase):
@@ -38,7 +38,7 @@ class EntropyAlgorithmTests(unittest.TestCase):
             ).write_text("BBBBB\n", encoding="utf-8")
 
             with patch.object(
-                partition_functions,
+                mim_square_functions,
                 "DATASET_PATH",
                 accepted_path,
             ):
@@ -64,7 +64,7 @@ class EntropyAlgorithmTests(unittest.TestCase):
 
             with (
                 patch.object(
-                    partition_functions,
+                    mim_square_functions,
                     "DATASET_PATH",
                     accepted_path,
                 ),
@@ -147,7 +147,7 @@ class EntropyAlgorithmTests(unittest.TestCase):
             word_list_path.write_text("\n".join(words), encoding="utf-8")
             with (
                 patch.object(
-                    partition_functions,
+                    mim_square_functions,
                     "DATASET_PATH",
                     word_list_path,
                 ),
@@ -197,7 +197,7 @@ class EntropyAlgorithmTests(unittest.TestCase):
             word_list_path.write_text("\n".join(words[:4]), encoding="utf-8")
             try:
                 with patch.object(
-                    partition_functions,
+                    mim_square_functions,
                     "DATASET_PATH",
                     word_list_path,
                 ):
@@ -499,7 +499,7 @@ class EntropyAlgorithmTests(unittest.TestCase):
             word_list_path.write_text("\n".join(words), encoding="utf-8")
             try:
                 with patch.object(
-                    partition_functions,
+                    mim_square_functions,
                     "DATASET_PATH",
                     word_list_path,
                 ):
@@ -645,7 +645,7 @@ class EntropyAlgorithmTests(unittest.TestCase):
             word_list_path.write_text("\n".join(words), encoding="utf-8")
             try:
                 with patch.object(
-                    partition_functions,
+                    mim_square_functions,
                     "DATASET_PATH",
                     word_list_path,
                 ):
@@ -788,7 +788,7 @@ class EntropyAlgorithmTests(unittest.TestCase):
                         return_value=words,
                     ) as load_answers,
                     patch.object(
-                        partition_functions,
+                        mim_square_functions,
                         "DATASET_PATH",
                         Path(directory) / "answers.txt",
                     ),
@@ -901,7 +901,7 @@ class EntropyAlgorithmTests(unittest.TestCase):
             with (
                 patch.object(Path, "replace", new=replace_unless_locked),
                 patch.object(
-                    partition_functions,
+                    mim_square_functions,
                     "DATASET_PATH",
                     results_dir / "answers.txt",
                 ),
@@ -955,7 +955,7 @@ class EntropyAlgorithmTests(unittest.TestCase):
             try:
                 with (
                     patch.object(
-                        partition_functions,
+                        mim_square_functions,
                         "DATASET_PATH",
                         word_list_path,
                     ),
@@ -1037,7 +1037,7 @@ class EntropyAlgorithmTests(unittest.TestCase):
                     words,
                 )
                 feedback_matrix, feedback_indices, _ = (
-                    partition_functions._get_feedback_matrix(words)
+                    mim_square_functions._get_feedback_matrix(words)
                 )
                 for game in saved_results["games"]:
                     self.assertEqual(len(game["guesses"]), game["attempts"])
@@ -1055,15 +1055,15 @@ class EntropyAlgorithmTests(unittest.TestCase):
                 self.assertIn("summary", saved_results)
             finally:
                 helpers.close_memo_store()
-                key = partition_functions._words_key(words)
-                matrix = partition_functions._FEEDBACK_MATRIX_CACHE.pop(
+                key = mim_square_functions._words_key(words)
+                matrix = mim_square_functions._FEEDBACK_MATRIX_CACHE.pop(
                     key,
                     None,
                 )
                 if matrix is not None and getattr(matrix, "_mmap", None) is not None:
                     matrix._mmap.close()
-                partition_functions._WORD_INDEX_CACHE.pop(key, None)
-                partition_functions._MATRIX_VALIDATED.discard(key)
+                mim_square_functions._WORD_INDEX_CACHE.pop(key, None)
+                mim_square_functions._MATRIX_VALIDATED.discard(key)
 
     def test_best_move_parallel_root_matches_serial(self) -> None:
         words = random.Random(2026).sample(solver._load_answers(), 12)
@@ -1076,7 +1076,7 @@ class EntropyAlgorithmTests(unittest.TestCase):
             serial_path.write_text(word_content, encoding="utf-8")
             try:
                 with patch.object(
-                    partition_functions,
+                    mim_square_functions,
                     "DATASET_PATH",
                     parallel_path,
                 ):
@@ -1096,7 +1096,7 @@ class EntropyAlgorithmTests(unittest.TestCase):
 
                 helpers._BEST_MOVE_CACHE.clear()
                 with patch.object(
-                    partition_functions,
+                    mim_square_functions,
                     "DATASET_PATH",
                     serial_path,
                 ):
@@ -1106,15 +1106,15 @@ class EntropyAlgorithmTests(unittest.TestCase):
             finally:
                 helpers.close_memo_store()
                 helpers._BEST_MOVE_CACHE.clear()
-                key = partition_functions._words_key(words)
-                matrix = partition_functions._FEEDBACK_MATRIX_CACHE.pop(
+                key = mim_square_functions._words_key(words)
+                matrix = mim_square_functions._FEEDBACK_MATRIX_CACHE.pop(
                     key,
                     None,
                 )
                 if matrix is not None and getattr(matrix, "_mmap", None) is not None:
                     matrix._mmap.close()
-                partition_functions._WORD_INDEX_CACHE.pop(key, None)
-                partition_functions._MATRIX_VALIDATED.discard(key)
+                mim_square_functions._WORD_INDEX_CACHE.pop(key, None)
+                mim_square_functions._MATRIX_VALIDATED.discard(key)
 
     def test_base_guess_reports_at_recursive_feedback_group_interval(self) -> None:
         words = ["SORIA"]
@@ -1225,7 +1225,7 @@ class EntropyAlgorithmTests(unittest.TestCase):
             helpers.MEMO_MEMORY_LIMIT = original_limit
 
     def test_deep_cost_matches_evaluation_on_seeded_word_sample(self) -> None:
-        original_path = partition_functions.DATASET_PATH
+        original_path = mim_square_functions.DATASET_PATH
         original_settings = (
             helpers.EXHAUSTIVE_LIMIT,
             helpers.BUDGET,
@@ -1241,7 +1241,7 @@ class EntropyAlgorithmTests(unittest.TestCase):
             word_list_path.write_text("\n".join(words), encoding="utf-8")
             try:
                 with patch.object(
-                    partition_functions,
+                    mim_square_functions,
                     "DATASET_PATH",
                     word_list_path,
                 ):
@@ -1292,15 +1292,15 @@ class EntropyAlgorithmTests(unittest.TestCase):
                     )
             finally:
                 helpers.close_memo_store()
-                key = partition_functions._words_key(words)
-                matrix = partition_functions._FEEDBACK_MATRIX_CACHE.pop(
+                key = mim_square_functions._words_key(words)
+                matrix = mim_square_functions._FEEDBACK_MATRIX_CACHE.pop(
                     key,
                     None,
                 )
                 if matrix is not None and getattr(matrix, "_mmap", None) is not None:
                     matrix._mmap.close()
-                partition_functions._WORD_INDEX_CACHE.pop(key, None)
-                partition_functions._MATRIX_VALIDATED.discard(key)
+                mim_square_functions._WORD_INDEX_CACHE.pop(key, None)
+                mim_square_functions._MATRIX_VALIDATED.discard(key)
                 helpers._BEST_MOVE_CACHE.clear()
                 helpers._guess_count.cache_clear()
                 for matrix_path in word_list_path.parent.glob("feedback_matrix_*.npy"):
@@ -1313,7 +1313,7 @@ class EntropyAlgorithmTests(unittest.TestCase):
                 database_path = word_list_path.with_name("entropy_memo.sqlite3")
                 if database_path.exists():
                     database_path.unlink()
-                partition_functions.DATASET_PATH = original_path
+                mim_square_functions.DATASET_PATH = original_path
                 (
                     helpers.EXHAUSTIVE_LIMIT,
                     helpers.BUDGET,

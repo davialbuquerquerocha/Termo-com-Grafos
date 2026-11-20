@@ -1,4 +1,4 @@
-"""Heuristics specific to the inclusive solver."""
+"""Heuristics specific to the exclusive solver."""
 
 def letter_count(word_list: list[str]) -> dict[tuple[str, int], int]:
     """Count each letter at each position in a set of candidate words."""

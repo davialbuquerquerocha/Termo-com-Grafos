@@ -12,7 +12,7 @@ from typing import Callable, Generator
 
 import numpy as np
 
-from algorithm.partition import functions as partition_functions
+from algorithm.mim_square import functions as mim_square_functions
 
 EXHAUSTIVE_LIMIT = 30
 BUDGET = 200_000
@@ -43,7 +43,7 @@ _PROFILE: "SearchProfile | None" = None
 _SearchContext = tuple[
     list[str],
     dict[str, int],
-    partition_functions.FeedbackMatrix,
+    mim_square_functions.FeedbackMatrix,
     str,
 ]
 
@@ -476,7 +476,7 @@ def k_by_size(n: int, depth: int = 0) -> int:
     if n <= 2:
         selected_k = 1
     else:
-        guess_count = _guess_count(str(partition_functions.DATASET_PATH))
+        guess_count = _guess_count(str(mim_square_functions.DATASET_PATH))
         if n <= EXHAUSTIVE_LIMIT:
             selected_k = guess_count
         else:
@@ -518,7 +518,7 @@ def _rank_state(
         dtype=np.intp,
         count=len(candidates),
     )
-    vocab_size = _guess_count(str(partition_functions.DATASET_PATH))
+    vocab_size = _guess_count(str(mim_square_functions.DATASET_PATH))
     extra_candidate_indices = np.unique(
         candidate_indices[candidate_indices >= vocab_size]
     )
@@ -539,17 +539,17 @@ def _rank_state(
         ].astype(np.int32)
         feedback_offsets = (
             np.arange(len(guess_indices), dtype=np.int32)[:, None]
-            * partition_functions._FEEDBACK_PATTERN_COUNT
+            * mim_square_functions._FEEDBACK_PATTERN_COUNT
         )
         counts = np.bincount(
             (feedback_codes + feedback_offsets).ravel(),
             minlength=(
                 len(guess_indices)
-                * partition_functions._FEEDBACK_PATTERN_COUNT
+                * mim_square_functions._FEEDBACK_PATTERN_COUNT
             ),
         ).reshape(
             len(guess_indices),
-            partition_functions._FEEDBACK_PATTERN_COUNT,
+            mim_square_functions._FEEDBACK_PATTERN_COUNT,
         )
         log_counts = np.zeros_like(counts, dtype=np.float64)
         nonzero_counts = counts > 0
@@ -597,7 +597,7 @@ def _evaluate_guess(
     for candidate, code in zip(candidates, feedback_codes):
         groups.setdefault(int(code), []).append(candidate)
 
-    winning_feedback = partition_functions._FEEDBACK_PATTERN_COUNT - 1
+    winning_feedback = mim_square_functions._FEEDBACK_PATTERN_COUNT - 1
     remaining_groups = [
         group for code, group in groups.items() if code != winning_feedback
     ]
@@ -723,7 +723,7 @@ def partitioning(guess: str, candidates: list[str]) -> dict[int, list[str]]:
     normalized_guess = guess.strip().upper()
     normalized_candidates = [candidate.strip().upper() for candidate in candidates]
     words = [normalized_guess, *normalized_candidates]
-    feedback_matrix, word_indices, _ = partition_functions._get_feedback_matrix(words)
+    feedback_matrix, word_indices, _ = mim_square_functions._get_feedback_matrix(words)
     for candidate, normalized_candidate in zip(candidates, normalized_candidates):
         feedback = int(feedback_matrix[word_indices[normalized_guess], word_indices[normalized_candidate]])
         groups.setdefault(feedback, []).append(candidate)
@@ -734,7 +734,7 @@ def entropy(guess: str, candidates: list[str]) -> float:
     normalized_guess = guess.strip().upper()
     normalized_candidates = [candidate.strip().upper() for candidate in candidates]
     words = [normalized_guess, *normalized_candidates]
-    feedback_matrix, word_indices, _ = partition_functions._get_feedback_matrix(words)
+    feedback_matrix, word_indices, _ = mim_square_functions._get_feedback_matrix(words)
 
     candidate_indices = np.fromiter(
         (word_indices[candidate] for candidate in normalized_candidates),
@@ -784,17 +784,17 @@ def ranking_with_context(
         ].astype(np.int32)
         feedback_offsets = (
             np.arange(len(guess_row_indices), dtype=np.int32)[:, None]
-            * partition_functions._FEEDBACK_PATTERN_COUNT
+            * mim_square_functions._FEEDBACK_PATTERN_COUNT
         )
         counts = np.bincount(
             (feedback_codes + feedback_offsets).ravel(),
             minlength=(
                 len(guess_row_indices)
-                * partition_functions._FEEDBACK_PATTERN_COUNT
+                * mim_square_functions._FEEDBACK_PATTERN_COUNT
             ),
         ).reshape(
             len(guess_row_indices),
-            partition_functions._FEEDBACK_PATTERN_COUNT,
+            mim_square_functions._FEEDBACK_PATTERN_COUNT,
         )
         log_counts = np.zeros_like(counts, dtype=np.float64)
         nonzero_counts = counts > 0
@@ -818,14 +818,14 @@ def ranking_with_context(
 def ranking(candidates: list[str], K: int) -> list[int]:
     """Rank guesses by entropy, building the word-list context if needed."""
     normalized_candidates = [candidate.strip().upper() for candidate in candidates]
-    with partition_functions.DATASET_PATH.open(encoding="utf-8") as file:
+    with mim_square_functions.DATASET_PATH.open(encoding="utf-8") as file:
         guesses = list(
             dict.fromkeys(word.strip().upper() for word in file if word.strip())
         )
     for candidate in normalized_candidates:
         if candidate not in guesses:
             guesses.append(candidate)
-    matrix, indices, word_key = partition_functions._get_feedback_matrix(guesses)
+    matrix, indices, word_key = mim_square_functions._get_feedback_matrix(guesses)
     return ranking_with_context(
         normalized_candidates,
         K,

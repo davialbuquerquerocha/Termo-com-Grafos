@@ -1,4 +1,4 @@
-"""Inclusive solver implementation."""
+"""Exclusive solver implementation."""
 
 from collections.abc import Callable
 
@@ -9,7 +9,7 @@ FilterFunction = Callable[[list[str], str, f.Feedback], list[str]]
 WordFunction = Callable[[list[str]], str]
 
 
-def algorithm_step(
+def exclusive_step(
     word_list: list[str],
     answer: str,
     word_function: WordFunction,
@@ -51,25 +51,25 @@ def algorithm_step(
     return word_list
 
 
-def inclusive_algorithm(
+def exclusive_algorithm(
     word_list: list[str],
     answer: str,
     word_function: WordFunction,
     show_progress: bool = True,
     on_guess: Callable[[str, f.Feedback], None] | None = None,
 ) -> int:
-    """Solve with the inclusive strategy and exact observed feedback."""
+    """Solve with the exclusive strategy and exact observed feedback."""
     answer = answer.strip().upper()
     accepted_words = {word.strip().upper() for word in word_list}
     if answer not in accepted_words:
         raise ValueError(
             f"A resposta {answer!r} não está na lista de palavras candidatas. "
-            "O algoritmo inclusivo só consegue encontrá-la se ela estiver nessa lista."
+            "O algoritmo exclusivo só consegue encontrá-la se ela estiver nessa lista."
         )
 
     count = 0
     while word_list:
-        word_list = algorithm_step(
+        word_list = exclusive_step(
             word_list,
             answer,
             word_function,

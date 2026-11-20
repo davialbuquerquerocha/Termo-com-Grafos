@@ -1,4 +1,4 @@
-"""Partition-based solver implementation."""
+"""Mim square solver implementation."""
 
 from collections.abc import Callable
 
@@ -11,7 +11,7 @@ from . import functions as helpers
 WordFunction = Callable[[list[str]], str]
 
 
-def partition_algorithm(
+def mim_square_algorithm(
     word_list: list[str],
     answer: str,
     word_function: WordFunction,
@@ -29,7 +29,7 @@ def partition_algorithm(
     if answer not in accepted_words:
         raise ValueError(
             f"A resposta {answer!r} não está na lista de palavras candidatas. "
-            "O algoritmo exclusivo só consegue encontrá-la se ela estiver nessa lista."
+            "O algoritmo mim_square só consegue encontrá-la se ela estiver nessa lista."
         )
 
     matrix, word_indices, word_key = helpers._get_feedback_matrix(normalized_words)
@@ -52,7 +52,7 @@ def partition_algorithm(
         elif count == 0:
             guess_index = helpers._FIRST_GUESS_CACHE.get(word_key, -1)
             if guess_index < 0:
-                guess_index = helpers._choose_partition_guess(
+                guess_index = helpers._choose_mim_square_guess(
                     possible_indices,
                     guessed_indices,
                     matrix,
@@ -61,7 +61,7 @@ def partition_algorithm(
                 helpers._FIRST_GUESS_CACHE[word_key] = guess_index
             guess = normalized_words[guess_index]
         else:
-            guess_index = helpers._choose_partition_guess(
+            guess_index = helpers._choose_mim_square_guess(
                 possible_indices,
                 guessed_indices,
                 matrix,

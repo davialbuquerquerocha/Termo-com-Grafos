@@ -13,7 +13,7 @@ Execute o exemplo a partir da raiz do projeto:
     cd "C:\Users\arthu\OneDrive\Desktop\Termo\Termo-com-Grafos"
 
     from algorithm import functions as common
-    from algorithm.partition import partition_algorithm
+    from algorithm.mim_square import mim_square_algorithm
 
     words = common.file_to_list("dataset/words/termo_palavras_aceitas.txt")
     attempts = partition_algorithm(
@@ -40,7 +40,7 @@ AVALIACAO EM LOTE
 
 Para executar o fluxo de lote existente para todas as palavras aceitas:
 
-    python main.py partition evaluate
+    python main.py mim_square evaluate
 
 Ou omita o nome do algoritmo para manter o atalho legado:
 
@@ -57,6 +57,6 @@ Cada jogo registra answer, attempts, solved e guesses. Os checkpoints sao
 atualizados atomicamente durante a avaliacao. Use
 --workers N para limitar os processos, --batch-size N para mudar o tamanho dos
 lotes ou --output caminho.json para escolher outro destino. A funcao
-run_all_answers em algorithm.partition.evaluation continua disponivel para
+run_all_answers em algorithm.mim_square.evaluation continua disponivel para
 passar uma lista de respostas diretamente. main.py somente encaminha os
 argumentos ao pacote selecionado.
